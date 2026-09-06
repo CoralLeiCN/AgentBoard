@@ -182,6 +182,19 @@ uv run python examples/benchmark.py --events 10000
 
 Tests cover imports, parallel timing, missing/invalid events, reimports, OTLP encodings and hierarchy, pagination, exports, classification/model failures, context branching, configuration, and plugin loading. The native Codex branch protocol is tested with a fake app-server; a real paid Codex generation is not required to run the test suite.
 
+An opt-in end-to-end test can instead run Codex against an operator-provided [custom Responses API provider](https://learn.chatgpt.com/docs/config-file/config-advanced#custom-model-providers) and verify that AgentBoard receives both its logs and traces. It starts an isolated loopback receiver, AgentBoard database, and Codex home, so it cannot read the user's configuration or OAuth state. Copy [`example.env`](example.env) to the ignored `.env`, replace the placeholders, and export it into the test shell. The key is optional for endpoints that do not require bearer authentication; the endpoint and any resulting cost remain operator-controlled.
+
+```sh
+cp example.env .env
+# Edit .env before continuing.
+set -a
+. ./.env
+set +a
+uv run --extra dev pytest -m e2e backend/tests/test_codex_endpoint_e2e.py -q
+```
+
+Without both `AGENTBOARD_E2E_CODEX_BASE_URL` and `AGENTBOARD_E2E_CODEX_MODEL`, the external test skips before starting a receiver or Codex process. The configured service must implement the Responses API expected by Codex, including streaming responses; a Chat Completions-only endpoint is not sufficient.
+
 For existing OTel data affected by numeric worker IDs appearing as sessions, back up the database and run `uv run agentboard repair-otlp-sessions`. The repair preserves recorded spans and event IDs, associates spans using unambiguous conversation evidence, and leaves unresolved activity in trace buckets. See [OTLP correlation rules](docs/data-lineage.md#9-live-telemetry-mappings). Timeline now displays internal timed spans as well as LLM/tool/wait operations.
 
 The **Sessions** view counts observed/imported conversation identities. **Unattributed telemetry** holds background traces with no unambiguous conversation association. The API defaults to sessions; use `/api/v1/sessions?identity_kind=unattributed` or `identity_kind=all` to include these records. See the [grouping review](docs/session-grouping-review.md).

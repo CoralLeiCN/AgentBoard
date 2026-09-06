@@ -1,5 +1,5 @@
 {
-  "codex_version": "codex-cli 0.153.0",
+  "codex_version": "codex-cli 0.153.4",
   "files": {
     "ApplyPatchApprovalParams.json": "179d91081c3c84d0f79fc544a3d6d423f280c0f9d93512cdd0344c80e09b99a3",
     "ApplyPatchApprovalResponse.json": "a5e145b4794ea91da6eb478626fac96bbbd4485c3399fabd1c9972d53d2d9010",

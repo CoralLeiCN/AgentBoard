@@ -441,6 +441,7 @@ Maintain the specification alongside feature changes. Validate behavior at the r
 | View preference | Toggle both ways, reopen another event, reload, default behavior, unavailable storage. |
 | Model features | Validated categories, labeled dummy results, request failures, bounded transcripts, preserved source session. |
 | Native continuation | Plan validation and fake app-server protocol tests; no paid model execution required for unit tests. |
+| Real Codex endpoint | Opt-in environment-configured Responses API provider; isolated AgentBoard receiver/database; successful response plus log, trace, and normalized LLM-event assertions. Skips before execution when unconfigured. |
 | App-server schema workflow | Stored manifest/file/reference integrity; version and file drift detection; no-op refreshes; removed-file cleanup; preservation on failed generation/replacement. [Tests](../backend/tests/test_schema_workflow.py) use a fake CLI. |
 | INPUT-01 follow-up | Environment context/internal requests excluded from human input/branch/wait semantics once implemented. |
 
@@ -454,6 +455,8 @@ uv run --extra dev ruff check backend examples scripts
 ```
 
 Use browser checks for visuals/persistence and Node for JS tests/syntax; Node is not an app runtime dependency. Acceptance criteria are not claims of complete automated coverage.
+
+**E2E-01 — Implemented, opt-in:** `AGENTBOARD_E2E_CODEX_BASE_URL` and `AGENTBOARD_E2E_CODEX_MODEL` select a real Responses-compatible provider for [one end-to-end test](../backend/tests/test_codex_endpoint_e2e.py). `AGENTBOARD_E2E_CODEX_API_KEY` optionally supplies its bearer credential without exposing the value in process arguments. The harness uses a temporary Codex home, disables OpenAI authentication and retries for the custom provider, and runs one short prompt. It creates a loopback receiver and temporary database rather than reading user Codex state or using either configured development or live AgentBoard data. Default tests make no external request; missing required variables skip, while partial configuration fails.
 
 Implementation references: [CLI](../backend/agentboard/cli.py), [Codex adapter](../backend/agentboard/adapters/codex.py), [telemetry](../backend/agentboard/otlp.py), [storage](../backend/agentboard/store.py), [API](../backend/agentboard/api.py), [field-origin descriptions](../frontend/provenance.js), [UI](../frontend/app.js), [models](../backend/agentboard/models.py), and [native resume](../backend/agentboard/resume.py). See also [architecture](architecture.md) and [runnable examples](../examples/README.md).
 
