@@ -1,8 +1,8 @@
 # Data lineage and transformation rules
 
-Reviewed against the working source on **2026-09-06**. Canonical storage schema: **v3**. API: **`/api/v1`**.
+Reviewed against the working source on **2026-09-06**. Canonical storage schema: **v6**. API: **`/api/v1`**.
 
-How AgentBoard obtains, transforms, stores, and presents data, including interpretation and information loss. This documents **current implementation**, not the upstream Codex format or universal release compatibility. New Codex archives record mapping version `codex-jsonl-v1`; earlier normalized rows have no persisted mapping version.
+How AgentBoard obtains, transforms, stores, and presents data, including interpretation and information loss. This documents **current implementation**, not the upstream Codex format or universal release compatibility. New Codex archives record mapping version `codex-jsonl-v3`; earlier normalized rows have no persisted mapping version.
 
 Related: [requirements](specification.md), [architecture](architecture.md), [current correctness gaps](data-quality-gaps.md), and [deferred capabilities](backlog.md).
 
@@ -73,9 +73,9 @@ The general shape consumed by the adapter is:
 
 Outer `type` and `payload.type` are separate discriminators. The outer timestamp dates the record; it does not necessarily measure an operation boundary.
 
-The [synthetic fixture](../examples/fixtures/codex-session.jsonl) provides complete shareable examples, not evidence of real session activity.
+The [synthetic fixture](../examples/fixtures/codex-session.jsonl) provides complete shareable examples, not evidence of real session activity. The separately labeled [redacted real excerpt](../examples/fixtures/codex-real-excerpt.md) preserves selected recorded structures and timings from CLI 0.153.4; its provenance documents omissions, redactions, and original line numbers.
 
-A read-only inspection of the previously discussed session `01a075ea-45bb-7a01-ba61-6b9951574c49` confirmed these shapes:
+A read-only inspection of a real session (pseudonymized here as `reviewed-session`) confirmed these shapes:
 
 | Physical line | Outer timestamp | Outer / payload type | Relevant observation |
 | --- | --- | --- | --- |
@@ -139,11 +139,15 @@ Measured item commands use a separate conversion: strings unchanged; all-string 
 
 Implemented **2026-09-06** in [adapter](../backend/agentboard/adapters/codex.py), [storage](../backend/agentboard/store.py), [API](../backend/agentboard/api.py), and [CLI](../backend/agentboard/cli.py). Accepted UTF-8 Codex JSONL imports retain every input line as UTF-8 bytes in `raw_lines`, keyed by archive ID and one-based physical `sequence`. This includes blank lines, original timestamp spelling, whitespace, line endings, absent final newline, unknown fields/types, system/developer messages, content parts, and encrypted content. The archive does not decrypt, execute, redact, or normalize these bytes. HTTP gzip input archives the decompressed JSONL, not its compressed transport envelope. Invalid imports roll back both archive and normalized changes.
 
-`raw_imports` records session ID, SHA-256 of concatenated source bytes, byte/line counts, archive creation time, and mapping version `codex-jsonl-v1`. Identical session/hash/mapping imports reuse an archive ID. Changed, appended, or shortened files create distinct archives and preserve prior versions. Latest means the most recently created distinct archive, not the longest file or most recent identical retry. Each distinct snapshot stores all its lines; storage grows with retained versions and has no automatic pruning.
+`raw_imports` records session ID, SHA-256 of concatenated source bytes, byte/line counts, archive creation time, and mapping version `codex-jsonl-v3`. Identical session/hash/mapping imports reuse an archive ID. Changed, appended, or shortened files create distinct archives and preserve prior versions. Latest means the most recently created distinct archive, not the longest file or most recent identical retry. Each distinct snapshot stores all its lines; storage grows with retained versions and has no automatic pruning.
 
 `GET /api/v1/sessions/{sid}/raw-imports` lists archive metadata. `/raw?import_id=ID` exports one exact version; omitting the ID selects the latest. The UI's **Export raw trace** uses that default. CLI equivalents are `agentboard export SESSION_ID --raw [--import-id ID]`. Existing `/export` and input exports remain normalized. Import responses include `raw_import_ids`. No available source returns an empty version list and a 404 raw export, never reconstructed evidence.
 
-Example: raw line 19 may emit both a user message and an inferred wait; normalized `sequence=19` locates the triggering line in a chosen archive. It does not identify the wait's starting line. Normalized events still lack explicit archive IDs and both-boundary references; reimport does not generally overwrite closed events, so a later archive may differ from their original evidence (DQ-02/DQ-06).
+**Event source links — Implemented 2026-09-06:** schema v6 stores each verified event's archive ID and physical source-line numbers separately in `event_raw_sources`. `GET /api/v1/sessions/{sid}/events/{event_id}/raw` returns archive metadata and exact line text. The inspector offers **Table / Normalized JSON / Raw JSONL**, retaining the selection across events and reloads.
+
+A message or completed item links to its source record; a completed tool links to call and result, which supply its arguments and output. Unified rows fetch both underlying events’ links. Inferred LLM gaps and between-turn waits have no actual event record: Raw JSONL reports this explicitly and excludes records used only to calculate duration. This exclusion also applies to boundary links saved by earlier versions, without reimporting. Recorded `codex_item` LLM events retain their actual item record. These are event-record links, not per-field lineage; session and propagated turn context can come from earlier lines.
+
+Links are created only when the newly parsed normalized event equals the stored event. Identical retries retain links; conflicting or shortened snapshots do not redirect existing evidence to the latest archive. Completion updates replace links when the resulting event matches; hybrid events combining older content with changed timing lose their link rather than claim an incorrect source. Existing archives are not automatically reparsed during migration. Reimport original rollouts to backfill matching events; mismatched legacy events remain unavailable. OTLP and replay report that they have no Codex JSONL source. [Source-link tests](../backend/tests/test_event_raw.py) cover exclusion of inferred boundaries (including older links), actual LLM items, delayed prompts, version binding, completion, hybrid updates, legacy backfill, and unified items.
 
 Schema v3 adds the archive tables without reconstructing old evidence. Reimport original files to backfill older sessions and metadata. Archive retention covers successful Codex JSONL imports; OTLP still retains selected decoded evidence rather than complete wire bytes. Exact round-trip, changed/shortened retry, rollback, CLI newline preservation, and migration coverage: [synthetic tests](../backend/tests/test_raw_traces.py).
 
@@ -334,12 +338,12 @@ The JavaScript inspector derives origins from source, kind, attributes, and reta
 
 ### 6.4 Worked historical example
 
-The observed line 8 timestamp became the anchor. At line 9 the reasoning record triggered a gap:
+The observed line 8 timestamp became the anchor. At line 9 the reasoning record triggered a gap. Event and session IDs below are pseudonyms:
 
 ```json
 {
-  "id": "90a2f15614abc8d049ce6345eed488a6",
-  "session_id": "01a075ea-45bb-7a01-ba61-6b9951574c49",
+  "id": "reviewed-llm-event",
+  "session_id": "reviewed-session",
   "sequence": 9,
   "kind": "llm",
   "name": "LLM response (estimated)",

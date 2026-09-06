@@ -319,14 +319,15 @@ Origin explanations are computed from built-in mappings for display, including o
 
 **VIEW-01 — Implemented**
 
-- Place a **Table / Normalized JSON** toggle in the event inspector.
+- Place a **Table / Normalized JSON / Raw JSONL** toggle in the event inspector.
 - Show one primary representation at a time.
 - Table view presents values, origin labels, and explanations.
 - JSON view presents the complete normalized event as formatted JSON.
-- Keep the timing explanation and available source evidence accessible in either view.
+- Raw JSONL shows actual event records with exact archived text, line numbers, and archive identity. Records used only to calculate duration are excluded; inferred intervals explicitly have no raw event record. Multiple records and unavailable mappings are explicit. See [source-link semantics](data-lineage.md#35-raw-archive-and-export).
+- Keep the timing explanation and available source evidence accessible in every view.
 - Indicate the selected control visually and accessibly; support keyboard activation.
 - Default to Table when no valid saved choice exists.
-- Remember the last selection across events and page reloads using browser local storage, key `agentboard-event-view`, with values `table` or `json`.
+- Remember the last selection across events and page reloads using browser local storage, key `agentboard-event-view`, with values `table`, `json`, or `raw`.
 - Scope persistence to the browser/origin; do not imply account synchronization or sharing across browsers, hosts, or ports.
 - If storage is unavailable, preserve the choice in memory for the current page without breaking inspection.
 
@@ -342,7 +343,7 @@ Supported event kinds are `user`, `assistant`, `llm`, `tool`, `user_wait`, and `
 
 Accept known numeric timezone offsets and normalize them to UTC. Support instants on/after the Unix epoch with up to nine fractional digits; reject leap seconds, unknown `-00:00` offsets, and finer precision without silently rounding.
 
-Schema v1 timestamps migrate to text, schema v3 adds raw archive tables, schema v4 adds OTLP identity indexes, and schema v5 distinguishes session identities from unattributed telemetry on startup in one transaction under a write lock, preserving IDs, pagination cursors, metadata, and classifications. Stop all older AgentBoard processes before upgrading. Failures roll back the migration. Existing normalized API/export timestamp keys `start_ns`, `end_ns`, and `started_ns` are replaced, so external consumers and custom adapters must adopt the new names. Timestamp conversion needs no reimport; backfilling raw evidence requires reimporting original rollouts. Refresh the UI after restart. Older binaries cannot use schema v5. Existing OTLP session associations require the explicit repair described in [lineage §9](data-lineage.md#9-live-telemetry-mappings). The database row ID, original sequence, and temporal order have different meanings.
+Schema v1 timestamps migrate to text, schema v3 adds raw archive tables, schema v4 adds OTLP identity indexes, and schema v5 distinguishes session identities from unattributed telemetry, and schema v6 adds event source links on startup in one transaction under a write lock, preserving IDs, pagination cursors, metadata, and classifications. Stop all older AgentBoard processes before upgrading. Failures roll back the migration. Existing normalized API/export timestamp keys `start_ns`, `end_ns`, and `started_ns` are replaced, so external consumers and custom adapters must adopt the new names. Timestamp conversion needs no reimport; backfilling raw evidence requires reimporting original rollouts. Refresh the UI after restart. Older binaries cannot use schema v6. Existing OTLP session associations require the explicit repair described in [lineage §9](data-lineage.md#9-live-telemetry-mappings). The database row ID, original sequence, and temporal order have different meanings.
 
 | Endpoint | Purpose |
 | --- | --- |
@@ -352,6 +353,7 @@ Schema v1 timestamps migrate to text, schema v3 adds raw archive tables, schema 
 | `GET /api/v1/sessions/{sid}/events` | Filter by source, kind, and text; paginate with a cursor. |
 | `GET /api/v1/sessions/{sid}/parallel-groups` | Derived tool-overlap groups for the full session or selected source. |
 | `GET /api/v1/sessions/{sid}/raw-imports` | List complete Codex source archives with hashes and mapping versions. |
+| `GET /api/v1/sessions/{sid}/events/{event_id}/raw` | Get verified source lines and archive identity, or an explicit unavailable reason. |
 | `GET /api/v1/sessions/{sid}/raw` | Export exact archived JSONL; optional `import_id` selects a version. |
 | `GET /api/v1/sessions/{sid}/inputs` | Query events currently classified as user inputs. |
 | `GET /api/v1/sessions/{sid}/stats` | Counts, bounds, and timing groups, optionally by source. |
@@ -476,7 +478,7 @@ Acceptance: every row has a runnable script or an explicit UI/CLI walkthrough. A
 | Automatic rollout watcher/import hooks | Not implemented; imports are explicit. |
 | Dashboard live refresh | Not implemented; manually refresh after ingestion. |
 | Exact human think time, embedded approvals, async question waits | Not reliably established from the currently supported records. |
-| Full raw rollout retention and per-field source-line lineage | Raw Codex JSONL versions, hashes, and physical lines are implemented for new imports/reimports; explicit per-event archive and both-boundary references remain open. See [archive semantics](data-lineage.md#35-raw-archive-and-export). |
+| Full raw rollout retention and per-field source-line lineage | Raw Codex JSONL versions, hashes, and physical lines are implemented for new imports/reimports; verified event archive and actual event-record links are implemented; complete per-field lineage remains open. See [archive semantics](data-lineage.md#35-raw-archive-and-export). |
 | OTLP metrics receiver or gRPC receiver | Outside current scope; use a collector for protocol translation when needed. |
 | Other coding-agent adapters | Outside the shipped integration set; extension boundary exists. |
 | Multi-tenant SaaS, distributed storage, durable job queue | Outside current scope. |

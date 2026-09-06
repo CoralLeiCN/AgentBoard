@@ -12,3 +12,5 @@
 .bar.user,.bar.assistant{background:#7489bb}.bar.instant{min-width:4px;border-radius:50%}
 
 .child-operation .event-name{padding-left:16px}
+
+#event-raw-view{min-width:0}#event-raw-lines section{margin-top:18px}.raw-line-label{font-size:11px;overflow-wrap:anywhere}#event-dialog #event-raw-lines pre{max-height:none;white-space:pre;overflow-x:auto}.event-view-toggle{flex-wrap:wrap}

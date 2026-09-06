@@ -27,7 +27,7 @@ def command_text(command):
 
 
 class CodexAdapter:
-    mapping_version = "codex-jsonl-v1"
+    mapping_version = "codex-jsonl-v3"
 
     def parse(self, lines):
         sid = None
@@ -53,6 +53,7 @@ class CodexAdapter:
                     "user-wait",
                     end_time=ts,
                     timing="estimated",
+                    raw_line_numbers=[],
                     attributes={
                         "wait_type": "between_turns",
                         "basis": "turn completion to next user prompt; may include idle time",
@@ -60,6 +61,7 @@ class CodexAdapter:
                 )
 
         def event(kind, name, ts, suffix="", **kwargs):
+            kwargs.setdefault("raw_line_numbers", [seq])
             return Event(
                 id=stable_id(sid, seq, suffix),
                 session_id=sid,
@@ -80,6 +82,7 @@ class CodexAdapter:
                     "llm",
                     end_time=ts,
                     timing="estimated",
+                    raw_line_numbers=[],
                     attributes={"basis": "gap between rollout items; includes orchestration"},
                 )
 
@@ -148,6 +151,7 @@ class CodexAdapter:
                         id=stable_id(sid, "item", item.get("id", seq)),
                         session_id=sid,
                         sequence=seq,
+                        raw_line_numbers=[seq],
                         kind=item_kind,
                         name=name,
                         start_time=format_timestamp(start),
@@ -223,6 +227,7 @@ class CodexAdapter:
                 output = output if isinstance(output, str) else json.dumps(output)
                 tool = pending.pop(call, None)
                 if tool:
+                    tool.raw_line_numbers.append(seq)
                     tool.end_time = max(ts, tool.start_time)
                     if ts < tool.start_time:
                         tool.attributes["end_time_clamped"] = True

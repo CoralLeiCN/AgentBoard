@@ -206,6 +206,10 @@ def create_app(settings=None):
         store.get_session(sid)
         return {"items": store.raw_imports(sid)}
 
+    @app.get("/api/v1/sessions/{sid}/events/{event_id}/raw")
+    def event_raw(sid: str, event_id: str):
+        return store.event_raw(sid, event_id)
+
     @app.get("/api/v1/sessions/{sid}/raw")
     def raw_export(sid: str, import_id: int | None = Query(None, ge=1)):
         archive = store.raw_import(sid, import_id)
