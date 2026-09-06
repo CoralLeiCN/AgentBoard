@@ -4,5 +4,13 @@ name = "AgentBoard"
 
 [setup]
 script = '''
+set -e
 uv sync --locked --extra dev
+
+if [ ! -e .agentboard/dev.db ]; then
+  agentboard_git_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
+  agentboard_main_root="$(dirname "$agentboard_git_dir")"
+  uv run agentboard --config config/dev.toml --database .agentboard/dev.db snapshot \
+    --source "$agentboard_main_root/.agentboard/baseline.db"
+fi
 '''
