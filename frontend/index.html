@@ -32,7 +32,7 @@
   </section>
 </main>
 <dialog id="event-dialog" aria-labelledby="event-title">
-  <div class="dialog-heading"><div><div class="eyebrow">EVENT DETAILS</div><h2 id="event-title">Event details</h2></div><div class="event-controls"><div class="event-view-toggle" role="group" aria-label="Event detail view"><button type="button" data-event-view="table" aria-pressed="true" aria-controls="event-table-view">Table</button><button type="button" data-event-view="json" aria-pressed="false" aria-controls="event-json-view">Normalized JSON</button></div><button class="icon-button close" aria-label="Close dialog">×</button></div></div>
+  <div class="dialog-heading"><div><div class="eyebrow">EVENT DETAILS</div><h2 id="event-title">Event details</h2></div><div class="event-controls"><div class="event-view-toggle" role="group" aria-label="Event detail view"><button type="button" data-event-view="table" aria-pressed="true" aria-controls="event-table-view">Table</button><button type="button" data-event-view="json" aria-pressed="false" aria-controls="event-json-view">Normalized JSON</button><button type="button" data-event-view="raw" aria-pressed="false" aria-controls="event-raw-view">Raw JSONL</button></div><button class="icon-button close" aria-label="Close dialog">×</button></div></div>
   <div class="event-explanation"><p id="event-summary"></p><p id="event-basis"></p></div>
   <section id="event-parallel" class="parallel-summary" hidden><strong id="event-parallel-title"></strong><p id="event-parallel-summary"></p><details><summary>Derived group and member IDs</summary><pre id="event-parallel-json"></pre></details></section>
   <section id="event-table-view" aria-label="Table view">
@@ -40,6 +40,7 @@
     <div class="table-wrap"><table class="provenance-table"><caption>Where each field comes from</caption><thead><tr><th>FIELD / VALUE</th><th>ORIGIN</th><th>HOW IT WAS OBTAINED</th></tr></thead><tbody id="event-fields"></tbody></table></div>
   </section>
   <section id="event-json-view" aria-label="Normalized JSON view" hidden><pre id="event-json"></pre></section>
+  <section id="event-raw-view" aria-label="Raw JSONL view" hidden><p id="event-raw-status" role="status"></p><div id="event-raw-lines"></div></section>
   <p id="event-source-note"></p>
   <details id="event-evidence"><summary id="event-evidence-title">Preserved source data</summary><pre id="event-evidence-json"></pre></details>
 </dialog>

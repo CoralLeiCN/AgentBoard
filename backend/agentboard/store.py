@@ -49,8 +49,13 @@ CREATE TABLE IF NOT EXISTS raw_lines (
  sequence INTEGER NOT NULL, content BLOB NOT NULL,
  PRIMARY KEY(import_id, sequence)
 );
+CREATE TABLE IF NOT EXISTS event_raw_sources (
+ event_row_id INTEGER PRIMARY KEY REFERENCES events(row_id) ON DELETE CASCADE,
+ import_id INTEGER NOT NULL REFERENCES raw_imports(id) ON DELETE CASCADE,
+ line_numbers TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS sessions_identity ON sessions(identity_kind,started_at DESC,id);
-PRAGMA user_version = 5;
+PRAGMA user_version = 6;
 """
 
 
@@ -78,7 +83,7 @@ class Store:
             # Do not use executescript: it commits before running, breaking atomic migration.
             db.execute("BEGIN IMMEDIATE")
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, 3, 4, 5):
+            if version not in (0, 1, 2, 3, 4, 5, 6):
                 raise ValueError("Unsupported database schema version")
             if version == 1:
                 self._migrate_timestamps(db)
@@ -153,6 +158,8 @@ class Store:
                         (item.session_id, digest.hexdigest(), item.mapping_version),
                     ).fetchone()
                     if previous:
+                        db.execute("UPDATE event_raw_sources SET import_id=? WHERE import_id=?",
+                                   (previous["id"], raw_id))
                         db.execute("DELETE FROM raw_imports WHERE id=?", (raw_id,))
                         raw_import_ids.append(previous["id"])
                     else:
@@ -206,16 +213,17 @@ class Store:
                         f"INSERT OR IGNORE INTO events({keys}) VALUES({placeholders})", tuple(d.values())
                     )
                     inserted += cursor.rowcount
+                    updated = False
                     # Reimporting older records moves recognized input requests out of tool time.
                     if cursor.rowcount == 0 and item.kind == "user_wait":
-                        db.execute(
+                        updated = db.execute(
                             """UPDATE events SET kind=?, attributes=json_patch(attributes,?)
                             WHERE session_id=? AND id=? AND kind='tool'""",
                             (item.kind, d["attributes"], item.session_id, item.id),
-                        )
+                        ).rowcount > 0
                     # Growing rollouts can complete a previously unfinished tool call.
                     if cursor.rowcount == 0 and item.end_time is not None:
-                        db.execute(
+                        completed = db.execute(
                             """UPDATE events SET end_time=?, timing=?, status=?, attributes=?
                             WHERE session_id=? AND id=? AND end_time IS NULL""",
                             (
@@ -226,7 +234,24 @@ class Store:
                                 item.session_id,
                                 item.id,
                             ),
-                        )
+                        ).rowcount > 0
+                        updated = updated or completed
+                    if raw_id is not None and item.raw_line_numbers:
+                        stored = self.event_row(db.execute(
+                            "SELECT * FROM events WHERE session_id=? AND id=?",
+                            (item.session_id, item.id),
+                        ).fetchone())
+                        row_id = stored.pop("row_id")
+                        if updated:
+                            # A partial update may combine old content with new timing.
+                            # Do not claim a single archive explains that hybrid event.
+                            db.execute("DELETE FROM event_raw_sources WHERE event_row_id=?", (row_id,))
+                        if stored == item.model_dump():
+                            db.execute(
+                                """INSERT INTO event_raw_sources VALUES(?,?,?)
+                                ON CONFLICT(event_row_id) DO NOTHING""",
+                                (row_id, raw_id, json.dumps(sorted(set(item.raw_line_numbers)))),
+                            )
             if raw_id is not None:
                 raise ValueError("Incomplete raw trace import")
             if otlp_traces:
@@ -357,6 +382,43 @@ class Store:
                 "SELECT content FROM raw_lines WHERE import_id=? ORDER BY sequence", (archive["id"],)
             ):
                 yield row["content"]
+
+    def event_raw(self, sid, event_id):
+        """Return exact source lines bound to this stored event, never the latest archive by guesswork."""
+        with self.connect() as db:
+            db.execute("BEGIN")
+            event = db.execute("SELECT * FROM events WHERE session_id=? AND id=?", (sid, event_id)).fetchone()
+            if event is None:
+                raise KeyError("Event not found")
+            attrs = json.loads(event["attributes"])
+            if event["source"] == "codex_jsonl" and (
+                event["kind"] == "llm"
+                or event["kind"] == "user_wait" and attrs.get("wait_type") == "between_turns"
+            ):
+                # Also exclude boundary links saved by earlier importer versions.
+                return {
+                    "event_id": event_id, "available": False, "lines": [],
+                    "reason": "No raw JSONL record: AgentBoard inferred this interval. "
+                              "Records used only to calculate its duration are not shown.",
+                }
+            source = db.execute(
+                """SELECT r.*, s.line_numbers FROM event_raw_sources s
+                JOIN raw_imports r ON r.id=s.import_id WHERE s.event_row_id=?""", (event["row_id"],)
+            ).fetchone()
+            if source is None:
+                reason = ("No verified source-line mapping. Reimport the original rollout to link matching events."
+                          if event["source"] in ("codex_jsonl", "codex_item")
+                          else "This event does not originate from a Codex JSONL file.")
+                return {"event_id": event_id, "available": False, "reason": reason, "lines": []}
+            archive = dict(source)
+            numbers = json.loads(archive.pop("line_numbers"))
+            lines = [{"line_number": row["sequence"], "text": row["content"].decode("utf-8")}
+                     for row in db.execute(
+                         """SELECT sequence,content FROM raw_lines WHERE import_id=?
+                         AND sequence IN (SELECT value FROM json_each(?)) ORDER BY sequence""",
+                         (archive["id"], json.dumps(numbers)),
+                     )]
+            return {"event_id": event_id, "available": True, "archive": archive, "lines": lines}
 
     @staticmethod
     def session_row(row):

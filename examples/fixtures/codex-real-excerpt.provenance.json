@@ -1,0 +1,201 @@
+{
+  "kind": "redacted_real_excerpt",
+  "source": "Local Codex rollout from the AgentBoard event-inspector task",
+  "source_cli_version": "0.153.4",
+  "source_date": "2026-09-06",
+  "sha256": "76786dcd5ff09ad29f7596837da332ac8684702ba1553e684c56df1b8c590b81",
+  "record_count": 13,
+  "preserved": [
+    "record order",
+    "timestamps and measured durations",
+    "record types and structure of retained fields",
+    "ordinals",
+    "call/response identity equality",
+    "exit codes",
+    "token counts",
+    "reviewed task request, assistant commentary, and command inputs"
+  ],
+  "changes": [
+    "selected records only; lines 3\u20137 and everything after 18 omitted",
+    "identifiers pseudonymized; local paths replaced",
+    "command output, repository identity, and process IDs redacted",
+    "instruction metadata, account rate limits and credits, timezone, and detailed local configuration omitted",
+    "original source prefix hash and local source locator kept only in the ignored local provenance file",
+    "payload.agentboard_fixture added to session_meta as excerpt labeling",
+    "JSON reserialized; not byte-identical to the private original"
+  ],
+  "lines": [
+    {
+      "excerpt_line": 1,
+      "original_line": 1,
+      "original_ordinal": 0,
+      "redacted_paths": [
+        "/payload/session_id",
+        "/payload/id",
+        "/payload/cwd",
+        "/payload/git/commit_hash",
+        "/payload/git/repository_url"
+      ],
+      "omitted_paths": [
+        "/payload/base_instructions",
+        "/payload/context_window"
+      ]
+    },
+    {
+      "excerpt_line": 2,
+      "original_line": 2,
+      "original_ordinal": 1,
+      "redacted_paths": [
+        "/payload/turn_id",
+        "/payload/trace_id"
+      ]
+    },
+    {
+      "excerpt_line": 3,
+      "original_line": 8,
+      "original_ordinal": 7,
+      "redacted_paths": [
+        "/payload/turn_id",
+        "/payload/root_turn_id",
+        "/payload/cwd"
+      ],
+      "omitted_paths": [
+        "/payload/workspace_roots",
+        "/payload/current_date",
+        "/payload/timezone",
+        "/payload/approval_policy",
+        "/payload/approvals_reviewer",
+        "/payload/sandbox_policy",
+        "/payload/permission_profile",
+        "/payload/active_permission_profile",
+        "/payload/file_system_sandbox_policy",
+        "/payload/model",
+        "/payload/comp_hash",
+        "/payload/personality",
+        "/payload/collaboration_mode",
+        "/payload/multi_agent_version",
+        "/payload/realtime_active",
+        "/payload/effort",
+        "/payload/summary"
+      ]
+    },
+    {
+      "excerpt_line": 4,
+      "original_line": 9,
+      "original_ordinal": 8,
+      "redacted_paths": [
+        "/payload/id",
+        "/payload/internal_chat_message_metadata_passthrough/turn_id"
+      ]
+    },
+    {
+      "excerpt_line": 5,
+      "original_line": 10,
+      "original_ordinal": 9,
+      "redacted_paths": [
+        "/payload/thread_id",
+        "/payload/turn_id",
+        "/payload/item/id",
+        "/payload/item/client_id"
+      ]
+    },
+    {
+      "excerpt_line": 6,
+      "original_line": 11,
+      "original_ordinal": 10,
+      "redacted_paths": [
+        "/payload/thread_id",
+        "/payload/turn_id",
+        "/payload/item/id"
+      ]
+    },
+    {
+      "excerpt_line": 7,
+      "original_line": 12,
+      "original_ordinal": 11,
+      "redacted_paths": [
+        "/payload/id",
+        "/payload/internal_chat_message_metadata_passthrough/turn_id"
+      ]
+    },
+    {
+      "excerpt_line": 8,
+      "original_line": 13,
+      "original_ordinal": 12,
+      "redacted_paths": [
+        "/payload/id",
+        "/payload/call_id",
+        "/payload/internal_chat_message_metadata_passthrough/turn_id"
+      ]
+    },
+    {
+      "excerpt_line": 9,
+      "original_line": 14,
+      "original_ordinal": 13,
+      "redacted_paths": [
+        "/payload/thread_id",
+        "/payload/turn_id",
+        "/payload/session_id",
+        "/payload/root_turn_id",
+        "/payload/response_id"
+      ]
+    },
+    {
+      "excerpt_line": 10,
+      "original_line": 15,
+      "original_ordinal": 14,
+      "redacted_paths": [
+        "/payload/thread_id",
+        "/payload/turn_id",
+        "/payload/item/id",
+        "/payload/item/process_id",
+        "/payload/item/cwd",
+        "/payload/item/stdout",
+        "/payload/item/aggregated_output",
+        "/payload/item/formatted_output"
+      ]
+    },
+    {
+      "excerpt_line": 11,
+      "original_line": 16,
+      "original_ordinal": 15,
+      "redacted_paths": [
+        "/payload/thread_id",
+        "/payload/turn_id",
+        "/payload/item/id",
+        "/payload/item/process_id",
+        "/payload/item/cwd",
+        "/payload/item/stdout",
+        "/payload/item/aggregated_output",
+        "/payload/item/formatted_output"
+      ]
+    },
+    {
+      "excerpt_line": 12,
+      "original_line": 17,
+      "original_ordinal": 16,
+      "redacted_paths": [
+        "/payload/id",
+        "/payload/call_id",
+        "/payload/output/1/text",
+        "/payload/output/2/text",
+        "/payload/internal_chat_message_metadata_passthrough/turn_id"
+      ]
+    },
+    {
+      "excerpt_line": 13,
+      "original_line": 18,
+      "original_ordinal": 17,
+      "redacted_paths": [],
+      "omitted_paths": [
+        "/payload/rate_limits"
+      ]
+    }
+  ],
+  "privacy_review": {
+    "date": "2026-09-07",
+    "scope": "All 13 excerpt records and the public provenance manifest",
+    "retained_content": "Reviewed AgentBoard feature request, assistant commentary, repository-relative read-only commands, original timestamps, durations, and token counts",
+    "excluded_content": "Credentials, personal contact details, native session identifiers, private home paths, original instructions and command output, account quota/credit status, timezone, and detailed local configuration"
+  }
+}

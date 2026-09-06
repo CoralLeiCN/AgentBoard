@@ -29,6 +29,8 @@ Numbered examples run independently, import synthetic fixtures idempotently, and
 
 Models default to `http://localhost:30000/v1`; the OpenAI client discovers `/models` and calls Chat Completions. Unavailable-service results carry `dummy: true`, preserving API/store/replay checks. Set server `AGENTBOARD_MODEL_MODE=dummy` to force fallback or `local` to require a model. The independent worker also reads its own environment settings. Tests verify real-client discovery/completion through mock HTTP without an external service.
 
+A separate [real Codex excerpt](fixtures/codex-real-excerpt.md) contains 13 reviewed, redacted records from a local CLI 0.153.4 session, with original line mapping and preserved timings. Import it explicitly into the dev dataset to inspect recorded item lifetimes and custom tool calls. **Load demo** continues to load the synthetic fixture.
+
 The two-turn fixture includes overlapping tools, a failed test, a patch, and a passing suite. Expected tool sum: **17,500 ms**; active union: **16,400 ms**; LLM gap estimate: **38,380 ms**; between-turn wait: **31,900 ms**. Its command text is never executed. The UI packages an identical copy.
 
 The native resume example prints a reviewable plan. For an actual continuation, import a real local Codex session and run:

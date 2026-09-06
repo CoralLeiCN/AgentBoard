@@ -2,8 +2,8 @@ const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const state = {listKind:'session',offset:0, next:null, sid:null, session:null, stats:null, tab:'timeline', events:[], parallelGroups:[], parallelByEvent:new Map(), parallelNote:'', cursor:null, request:0, listRequest:0, features:[]};
 let noticeTimer, searchTimer;
-let eventView='table';
-try { if(localStorage.getItem('agentboard-event-view')==='json')eventView='json'; } catch { /* Storage may be disabled. */ }
+let eventView='table', eventRawRequest=0;
+try { const saved=localStorage.getItem('agentboard-event-view');if(['json','raw'].includes(saved))eventView=saved; } catch { /* Storage may be disabled. */ }
 function notice(text, error=false) { $('#notice').textContent=text; $('#notice').hidden=false; $('#notice').className=error?'error':''; clearTimeout(noticeTimer); noticeTimer=setTimeout(()=>$('#notice').hidden=true, error?12000:5000); }
 async function api(path, options={}) {
   const token=sessionStorage.getItem('agentboard-token');
@@ -85,12 +85,41 @@ async function loadEvents(more=false) {
   $('#more').hidden=state.cursor===null;renderEvents();
 }
 function setEventView(view,save=false) {
-  eventView=view==='json'?'json':'table';
+  eventView=['json','raw'].includes(view)?view:'table';
   $('#event-table-view').hidden=eventView!=='table';
   $('#event-json-view').hidden=eventView!=='json';
+  $('#event-raw-view').hidden=eventView!=='raw';
   document.querySelectorAll('[data-event-view]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.eventView===eventView)));
   if(save)try { localStorage.setItem('agentboard-event-view',eventView); } catch { /* Keep the choice in memory when storage is unavailable. */ }
   $('#event-dialog').scrollTop=0;
+}
+async function loadEventRaw(event) {
+  const request=++eventRawRequest;
+  $('#event-raw-status').textContent='Loading source lines…';
+  $('#event-raw-lines').replaceChildren();
+  const ids=event.unified?.source_event_ids||[event.id];
+  try {
+    const results=await Promise.all(ids.map(id=>json(`/api/v1/sessions/${encodeURIComponent(event.session_id)}/events/${encodeURIComponent(id)}/raw`)));
+    if(request!==eventRawRequest)return;
+    const lines=new Map();
+    for(const result of results)for(const line of result.lines) {
+      const key=`${result.archive.id}:${line.line_number}`;
+      if(!lines.has(key))lines.set(key,{...line,archive:result.archive});
+    }
+    const missing=results.filter(result=>!result.available);
+    $('#event-raw-status').textContent=lines.size
+      ? `${lines.size} source line${lines.size===1?'':'s'}${ids.length>1?` across ${ids.length} normalized events`:''}. Original JSONL text is preserved. Only records representing this event are shown; calculation-only boundaries are excluded.${missing.length?' Some source mappings are unavailable.':''}`
+      : [...new Set(missing.map(result=>result.reason))].join(' ');
+    for(const line of [...lines.values()].sort((a,b)=>a.archive.id-b.archive.id||a.line_number-b.line_number)) {
+      const section=document.createElement('section'), label=document.createElement('p'), pre=document.createElement('pre');
+      label.className='raw-line-label';
+      label.textContent=`Line ${line.line_number} · Archive #${line.archive.id} · SHA-256 ${line.archive.sha256}`;
+      pre.textContent=line.text;
+      section.append(label,pre);$('#event-raw-lines').append(section);
+    }
+  } catch(error) {
+    if(request===eventRawRequest)$('#event-raw-status').textContent=`Unable to load source lines: ${error.message}`;
+  }
 }
 function inspectEvent(event) {
   const description=describeEvent(event);
@@ -111,8 +140,9 @@ function inspectEvent(event) {
   $('#event-evidence').open=false;
   $('#event-evidence-title').textContent=description.evidence?.label||'Preserved source data';
   $('#event-evidence-json').textContent=description.evidence?JSON.stringify(description.evidence.data,null,2):'';
-  $('#event-source-note').textContent=description.evidence?'The preserved source data below is separate from AgentBoard’s normalized event.':'The full original source record is not retained in this event. These field origins describe the importer’s mapping, not a reconstruction of the raw log.';
+  $('#event-source-note').textContent=description.evidence?'The preserved source data below is separate from AgentBoard’s normalized event.':'Field origins describe AgentBoard’s normalization. Open Raw JSONL for verified source lines when available.';
   $('#event-json').textContent=JSON.stringify(event,null,2);
+  loadEventRaw(event);
   setEventView(eventView);
   $('#event-dialog').showModal();
   $('#event-dialog').scrollTop=0;

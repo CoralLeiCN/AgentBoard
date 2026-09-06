@@ -71,7 +71,7 @@ def test_exact_raw_roundtrip_and_metadata(client, compressed):
     assert archive["sha256"] == hashlib.sha256(body).hexdigest()
     assert archive["byte_count"] == len(body)
     assert archive["line_count"] == len(body.splitlines())
-    assert archive["mapping_version"] == "codex-jsonl-v1"
+    assert archive["mapping_version"] == "codex-jsonl-v3"
     assert client.get(path + "/raw").content == body
     meta = client.get(path).json()["metadata"]
     assert meta["thread_source"] == "guardian_review"
@@ -82,6 +82,10 @@ def test_exact_raw_roundtrip_and_metadata(client, compressed):
     # Physical source line still identifies the triggering record in the archive.
     user = next(e for e in events if e["kind"] == "user")
     assert json.loads(body.splitlines()[user["sequence"] - 1])["payload"]["id"] == "message-1"
+    for event in events:
+        evidence = client.get(path + f'/events/{event["id"]}/raw').json()
+        for line in evidence["lines"]:
+            assert line["text"].encode() == body.splitlines(keepends=True)[line["line_number"] - 1]
 
 
 def test_reimports_keep_versions_without_duplicate_archives(client):

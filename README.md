@@ -50,7 +50,7 @@ The CLI streams and commits each file separately, continues after handled failur
 
 Identical reimports deduplicate; growing files can complete unfinished calls. Zero new rows can still mean updates. Reimport does not generally correct completed records—see [merge rules](docs/data-lineage.md#8-identity-transactions-and-upgrades). Malformed or partially written JSON rejects the whole file; retry after writing completes. Browser uploads default to a 32 MiB limit. HTTP imports accept contents, never server filesystem paths.
 
-The database defaults to `./agentboard.db`. Select another file with `agentboard --database /path/traces.db serve` or `AGENTBOARD_DATABASE`. All sample sessions are synthetic. Nothing automatically scans or uploads your history.
+The database defaults to `./agentboard.db`. Select another file with `agentboard --database /path/traces.db serve` or `AGENTBOARD_DATABASE`. The default demo is synthetic. A separately labeled [redacted real-session excerpt](examples/fixtures/codex-real-excerpt.md) is available for source-record inspection. Nothing automatically scans or uploads your history.
 
 ## What is implemented
 

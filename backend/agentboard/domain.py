@@ -57,6 +57,8 @@ class Event(BaseModel):
     status: str = "ok"
     text: str = ""
     attributes: dict = Field(default_factory=dict)
+    # Import-only provenance; persisted separately from the normalized event.
+    raw_line_numbers: list[int] = Field(default_factory=list, exclude=True)
 
     @model_validator(mode="after")
     def valid_interval(self):
