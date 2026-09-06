@@ -6,6 +6,7 @@ import sqlite3
 import subprocess
 import threading
 import time
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
@@ -18,6 +19,7 @@ BASE_URL_ENV = "AGENTBOARD_E2E_CODEX_BASE_URL"
 MODEL_ENV = "AGENTBOARD_E2E_CODEX_MODEL"
 API_KEY_ENV = "AGENTBOARD_E2E_CODEX_API_KEY"
 PROMPT = "Reply with exactly AGENTBOARD_E2E_OK and do not use tools."
+EXAMPLE_ENV = Path(__file__).parents[2] / "example.env"
 
 
 def _config(key, value):
@@ -83,6 +85,17 @@ def test_codex_e2e_command_uses_responses_provider_without_exposing_key(tmp_path
     assert "requires_openai_auth=false" in joined
     assert 'shell_environment_policy.inherit="none"' in joined
     assert "AGENTBOARD_E2E_OK" in command[-1]
+
+
+def test_example_env_documents_codex_endpoint_settings():
+    values = dict(
+        line.split("=", 1)
+        for line in EXAMPLE_ENV.read_text().splitlines()
+        if line and not line.startswith("#")
+    )
+    assert set(values) == {BASE_URL_ENV, MODEL_ENV, API_KEY_ENV}
+    assert values[BASE_URL_ENV] and values[MODEL_ENV]
+    assert values[API_KEY_ENV] == ""
 
 
 @pytest.fixture

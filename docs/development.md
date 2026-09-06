@@ -55,12 +55,14 @@ Verification: [dev configuration tests](../backend/tests/test_dev_config.py) cov
 
 ## Optional real Responses endpoint test
 
-The normal suite uses fixtures, mocks, a dummy model, and a fake Codex app-server. To verify the complete model-request-to-telemetry path, [the opt-in test](../backend/tests/test_codex_endpoint_e2e.py) launches an ephemeral Codex process with a custom Responses API provider and points its log and trace exporters at a temporary AgentBoard receiver:
+The normal suite uses fixtures, mocks, a dummy model, and a fake Codex app-server. To verify the complete model-request-to-telemetry path, [the opt-in test](../backend/tests/test_codex_endpoint_e2e.py) launches an ephemeral Codex process with a custom Responses API provider and points its log and trace exporters at a temporary AgentBoard receiver. Start from the repository's [`example.env`](../example.env); `.env` is ignored by Git.
 
 ```sh
-AGENTBOARD_E2E_CODEX_BASE_URL=http://127.0.0.1:8000/v1 \
-AGENTBOARD_E2E_CODEX_MODEL=test-model \
-AGENTBOARD_E2E_CODEX_API_KEY=test-key \
+cp example.env .env
+# Edit .env before continuing.
+set -a
+. ./.env
+set +a
 uv run --extra dev pytest -m e2e backend/tests/test_codex_endpoint_e2e.py -q
 ```
 

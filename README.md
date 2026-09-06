@@ -182,12 +182,14 @@ uv run python examples/benchmark.py --events 10000
 
 Tests cover imports, parallel timing, missing/invalid events, reimports, OTLP encodings and hierarchy, pagination, exports, classification/model failures, context branching, configuration, and plugin loading. The native Codex branch protocol is tested with a fake app-server; a real paid Codex generation is not required to run the test suite.
 
-An opt-in end-to-end test can instead run Codex against an operator-provided [custom Responses API provider](https://learn.chatgpt.com/docs/config-file/config-advanced#custom-model-providers) and verify that AgentBoard receives both its logs and traces. It starts an isolated loopback receiver, AgentBoard database, and Codex home, so it cannot read the user's configuration or OAuth state. The endpoint and any resulting cost are controlled by these environment variables; the key is optional for endpoints that do not require bearer authentication.
+An opt-in end-to-end test can instead run Codex against an operator-provided [custom Responses API provider](https://learn.chatgpt.com/docs/config-file/config-advanced#custom-model-providers) and verify that AgentBoard receives both its logs and traces. It starts an isolated loopback receiver, AgentBoard database, and Codex home, so it cannot read the user's configuration or OAuth state. Copy [`example.env`](example.env) to the ignored `.env`, replace the placeholders, and export it into the test shell. The key is optional for endpoints that do not require bearer authentication; the endpoint and any resulting cost remain operator-controlled.
 
 ```sh
-AGENTBOARD_E2E_CODEX_BASE_URL=http://127.0.0.1:8000/v1 \
-AGENTBOARD_E2E_CODEX_MODEL=test-model \
-AGENTBOARD_E2E_CODEX_API_KEY=test-key \
+cp example.env .env
+# Edit .env before continuing.
+set -a
+. ./.env
+set +a
 uv run --extra dev pytest -m e2e backend/tests/test_codex_endpoint_e2e.py -q
 ```
 
