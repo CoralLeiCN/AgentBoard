@@ -482,7 +482,7 @@ Run from the repository root:
 ```sh
 uv run --extra dev pytest -q
 node --test frontend/tests/provenance.test.cjs
-uv run --extra dev ruff check agentboard examples tests
+uv run --extra dev ruff check backend examples
 ```
 
 Focused temporary-data cases reproduced injected context counted as user input, prompt → completion yielding no LLM span, duplicate call IDs losing the earlier call, and rewritten input text ignored on reimport. These are observations, **not regression guarantees or accepted behavior**; proposed checks are in the [gap register](data-quality-gaps.md).

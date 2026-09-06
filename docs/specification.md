@@ -448,7 +448,7 @@ For development dependencies and existing checks:
 uv sync --extra dev
 uv run --extra dev pytest -q
 node --test frontend/tests/provenance.test.cjs
-uv run --extra dev ruff check agentboard examples scripts tests
+uv run --extra dev ruff check backend examples scripts
 ```
 
 Use browser checks for visuals/persistence and Node for JS tests/syntax; Node is not an app runtime dependency. Acceptance criteria are not claims of complete automated coverage.
