@@ -1,0 +1,9 @@
+# Paths are relative to this config file. Codex's live endpoint stays on 4318.
+environment = "dev"
+host = "127.0.0.1"
+port = 4319
+reload = true
+database = "../.agentboard/dev.db"
+otlp_enabled = false
+model_mode = "dummy"
+plugins = []
