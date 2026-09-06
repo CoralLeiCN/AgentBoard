@@ -47,8 +47,8 @@ uv run agentboard --config config/dev.toml --database .agentboard/review-2.db se
 
 Dev mode blocks automatic OTel uploads but permits explicit imports and normal application actions. For an OTLP receiver experiment, use a separate temporary test configuration with `otlp_enabled=true` and controlled synthetic requests; do not point the global Codex exporters at it.
 
-The dev config enables `reload = true`: Python changes under `agentboard/` automatically restart the backend. Each worker retains the resolved config and CLI overrides, including the dev database and disabled telemetry ingestion. Refresh the internal browser after UI changes. Restart the command after TOML or environment changes; these settings are captured at startup. Database writes do not trigger reloads. The default collector has reload disabled.
+The dev config enables `reload = true`: Python changes under `backend/agentboard/` automatically restart the backend. Each worker retains the resolved config and CLI overrides, including the dev database and disabled telemetry ingestion. Refresh the internal browser after UI changes. Restart the command after TOML or environment changes; these settings are captured at startup. Database writes do not trigger reloads. The default collector has reload disabled.
 
 This config isolates endpoints and data; it does not freeze another process's Python code. Run a persistent live collector from a stable checkout or installation, without development auto-reload. Do not replace or restart the collector as part of routine dev testing.
 
-Verification: [dev configuration tests](../tests/test_dev_config.py) cover default endpoint compatibility, config precedence, CLI port selection, rejected live uploads, explicit imports, snapshot WAL consistency and refusal to overwrite existing data.
+Verification: [dev configuration tests](../backend/tests/test_dev_config.py) cover default endpoint compatibility, config precedence, CLI port selection, rejected live uploads, explicit imports, snapshot WAL consistency and refusal to overwrite existing data.

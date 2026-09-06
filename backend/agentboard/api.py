@@ -23,6 +23,12 @@ from .otlp import decode, normalize
 from .store import Store
 
 
+def frontend_directory():
+    """Use editable source assets, falling back to the copy bundled in a wheel."""
+    source = Path(__file__).resolve().parents[2] / "frontend"
+    return source if (source / "index.html").is_file() else Path(__file__).parent / "static"
+
+
 class ReplayRequest(BaseModel):
     input_id: str
     replacement: str = Field(min_length=1, max_length=30000)
@@ -271,7 +277,7 @@ def create_app(settings=None):
     for module in settings.plugins:
         importlib.import_module(module).register(app=app, store=store, adapters=registry, settings=settings)
 
-    static = Path(__file__).parent / "static"
+    static = frontend_directory()
     app.mount("/static", StaticFiles(directory=static), name="static")
 
     @app.get("/", include_in_schema=False)

@@ -21,15 +21,15 @@ flowchart LR
 
 | Module | Responsibility and reason for separation |
 | --- | --- |
-| [`domain.py`](../agentboard/domain.py) | Agent-neutral Pydantic session/event contract: source, timing quality, optional span hierarchy, text, attributes. No Codex-specific database columns. |
-| [`adapters/codex.py`](../agentboard/adapters/codex.py) | Incremental rollout normalization; isolates source-schema changes. Pending calls can grow with record count; the parser does not buffer the file. Unknown types are omitted from normalized events but retained in the raw archive. The stream includes `RawLine`/`RawTraceEnd` markers alongside `Session`/`Event` values; storage archives them in the same transaction. |
-| [`otlp.py`](../agentboard/otlp.py) | Protobuf/JSON validation and normalization; retains decoded record/resource/scope evidence. Separates transport measurements, output streaming, and estimated gaps. |
-| [`store.py`](../agentboard/store.py) | SQLite schema, indexes, transactions, cursors, grouped overlap aggregation, streaming reads. Keep SQL here so storage can change without rewriting routes/adapters. SQLite is the only shipped backend. |
-| [`parallel.py`](../agentboard/parallel.py) | Derives source/quality/turn/trace/parent-scoped tool-overlap groups from normalized intervals. Shared by API and UI; does not mutate events or require schema migration. |
-| [`api.py`](../agentboard/api.py) | Shared routes, auth, host/origin checks, body limits, backpressure, configuration, plugin registration. CPU/DB/model work runs in worker threads. Acknowledgment follows commit under WAL/`synchronous=NORMAL`; power-loss durability follows SQLite NORMAL semantics. |
-| [`models.py`](../agentboard/models.py) | Optional OpenAI client, bounded transcript construction, validated classification, text replay. No ingestion-time model calls or tool execution. |
-| [`resume.py`](../agentboard/resume.py) | Explicit CLI-only Codex JSON-lines RPC over stdio. Neither modifies rollout files nor exposes remote command execution. |
-| [`static/`](../agentboard/static/) | Plain-JavaScript UI over the shared API; no separate frontend API/build pipeline. Field-origin descriptions are computed here, not a persisted backend evidence contract. |
+| [`domain.py`](../backend/agentboard/domain.py) | Agent-neutral Pydantic session/event contract: source, timing quality, optional span hierarchy, text, attributes. No Codex-specific database columns. |
+| [`adapters/codex.py`](../backend/agentboard/adapters/codex.py) | Incremental rollout normalization; isolates source-schema changes. Pending calls can grow with record count; the parser does not buffer the file. Unknown types are omitted from normalized events but retained in the raw archive. The stream includes `RawLine`/`RawTraceEnd` markers alongside `Session`/`Event` values; storage archives them in the same transaction. |
+| [`otlp.py`](../backend/agentboard/otlp.py) | Protobuf/JSON validation and normalization; retains decoded record/resource/scope evidence. Separates transport measurements, output streaming, and estimated gaps. |
+| [`store.py`](../backend/agentboard/store.py) | SQLite schema, indexes, transactions, cursors, grouped overlap aggregation, streaming reads. Keep SQL here so storage can change without rewriting routes/adapters. SQLite is the only shipped backend. |
+| [`parallel.py`](../backend/agentboard/parallel.py) | Derives source/quality/turn/trace/parent-scoped tool-overlap groups from normalized intervals. Shared by API and UI; does not mutate events or require schema migration. |
+| [`api.py`](../backend/agentboard/api.py) | Shared routes, auth, host/origin checks, body limits, backpressure, configuration, plugin registration. CPU/DB/model work runs in worker threads. Acknowledgment follows commit under WAL/`synchronous=NORMAL`; power-loss durability follows SQLite NORMAL semantics. |
+| [`models.py`](../backend/agentboard/models.py) | Optional OpenAI client, bounded transcript construction, validated classification, text replay. No ingestion-time model calls or tool execution. |
+| [`resume.py`](../backend/agentboard/resume.py) | Explicit CLI-only Codex JSON-lines RPC over stdio. Neither modifies rollout files nor exposes remote command execution. |
+| [`frontend/`](../frontend/) | Plain-JavaScript UI over the shared API; no separate frontend API/build pipeline. Source checkouts serve these files directly, and wheel builds bundle them as package data. Field-origin descriptions are computed here, not a persisted backend evidence contract. |
 
 ## Identity and ordering
 
