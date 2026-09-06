@@ -40,6 +40,7 @@ packages = ["backend/agentboard"]
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
 pythonpath = ["."]
+markers = ["e2e: opt-in tests that use an operator-provided external service"]
 
 [tool.ruff]
 line-length = 110

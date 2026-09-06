@@ -52,3 +52,18 @@ The dev config enables `reload = true`: Python changes under `backend/agentboard
 This config isolates endpoints and data; it does not freeze another process's Python code. Run a persistent live collector from a stable checkout or installation, without development auto-reload. Do not replace or restart the collector as part of routine dev testing.
 
 Verification: [dev configuration tests](../backend/tests/test_dev_config.py) cover default endpoint compatibility, config precedence, CLI port selection, rejected live uploads, explicit imports, snapshot WAL consistency and refusal to overwrite existing data.
+
+## Optional real Responses endpoint test
+
+The normal suite uses fixtures, mocks, a dummy model, and a fake Codex app-server. To verify the complete model-request-to-telemetry path, [the opt-in test](../backend/tests/test_codex_endpoint_e2e.py) launches an ephemeral Codex process with a custom Responses API provider and points its log and trace exporters at a temporary AgentBoard receiver:
+
+```sh
+AGENTBOARD_E2E_CODEX_BASE_URL=http://127.0.0.1:8000/v1 \
+AGENTBOARD_E2E_CODEX_MODEL=test-model \
+AGENTBOARD_E2E_CODEX_API_KEY=test-key \
+uv run --extra dev pytest -m e2e backend/tests/test_codex_endpoint_e2e.py -q
+```
+
+`AGENTBOARD_E2E_CODEX_API_KEY` is optional. When present, Codex reads it from the child process environment and sends it as the provider credential; the test never includes the value in command arguments. The endpoint must support Codex's streaming Responses API wire format. The test disables request and stream retries, requests one short response, and asserts a successful final message plus ingested `otlp_log`, `otlp_trace`, and normalized `llm` events.
+
+The test skips when both required variables are absent and fails clearly when only one is set. It gives the child process a temporary Codex home, ignores user configuration and execution-policy rules, prevents shell tools from inheriting its environment, and runs read-only without approvals. It therefore cannot use stored OpenAI OAuth state and uses neither the development service on port 4319 nor the normal collector/database on port 4318. The operator owns availability, data handling, and cost for the configured endpoint.
