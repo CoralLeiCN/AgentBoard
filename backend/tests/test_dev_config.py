@@ -13,7 +13,7 @@ from agentboard.domain import Session
 from agentboard.snapshot import snapshot_database
 from agentboard.store import Store
 
-ROOT = Path(__file__).parents[1]
+ROOT = Path(__file__).parents[2]
 DEV = ROOT / 'config/dev.toml'
 
 
@@ -69,7 +69,7 @@ def test_cli_uses_dev_port_and_database(monkeypatch, tmp_path):
     assert captured['port'] == 4319 and not captured['settings'].otlp_enabled
     assert captured['settings'].database == str(tmp_path / 'dev.db')
     assert captured['reload'] and captured['factory']
-    assert captured['reload_dirs'] == [str(ROOT / 'agentboard')]
+    assert captured['reload_dirs'] == [str(ROOT / 'backend/agentboard')]
 
 
 def test_default_server_does_not_reload(monkeypatch, tmp_path):

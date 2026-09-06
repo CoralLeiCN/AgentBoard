@@ -41,14 +41,14 @@ flowchart TD
 
 | Stage | Implementation | Important boundary |
 | --- | --- | --- |
-| File discovery and import summary | [`cli.py`](../agentboard/cli.py), `main` | Directory search finds `*.jsonl`; one transaction per file. Glob selection is performed by the shell when supplied that way. |
-| HTTP import and OTLP receive | [`api.py`](../agentboard/api.py), `bounded_body`, `ingest`, `otlp` | Buffers a bounded request; decoding/ingestion runs in a worker. HTTP paths do not read arbitrary server file paths. |
-| Historical normalization | [`adapters/codex.py`](../agentboard/adapters/codex.py), `CodexAdapter.parse` | Parses file order with pending calls and turn state; never executes command text. |
-| Telemetry normalization | [`otlp.py`](../agentboard/otlp.py), `decode`, `normalize` | Preserves selected decoded evidence, not original wire bytes. |
-| Domain and timestamp validation | [`domain.py`](../agentboard/domain.py), [`timestamps.py`](../agentboard/timestamps.py) | Common event kinds, timestamps, and interval validation. This is not complete validation of every upstream payload variant. |
-| Identity, merging, aggregation | [`store.py`](../agentboard/store.py), `ingest`, `stats` | Archives complete accepted Codex JSONL versions; no cross-source semantic deduplication. |
-| Model operations | [`models.py`](../agentboard/models.py) | Explicit optional operations; importing a trace never calls a model. |
-| Display and provenance | [`static/app.js`](../agentboard/static/app.js), [`static/provenance.js`](../agentboard/static/provenance.js) | Descriptions are computed from stored source/kind/attributes at display time. |
+| File discovery and import summary | [`cli.py`](../backend/agentboard/cli.py), `main` | Directory search finds `*.jsonl`; one transaction per file. Glob selection is performed by the shell when supplied that way. |
+| HTTP import and OTLP receive | [`api.py`](../backend/agentboard/api.py), `bounded_body`, `ingest`, `otlp` | Buffers a bounded request; decoding/ingestion runs in a worker. HTTP paths do not read arbitrary server file paths. |
+| Historical normalization | [`adapters/codex.py`](../backend/agentboard/adapters/codex.py), `CodexAdapter.parse` | Parses file order with pending calls and turn state; never executes command text. |
+| Telemetry normalization | [`otlp.py`](../backend/agentboard/otlp.py), `decode`, `normalize` | Preserves selected decoded evidence, not original wire bytes. |
+| Domain and timestamp validation | [`domain.py`](../backend/agentboard/domain.py), [`timestamps.py`](../backend/agentboard/timestamps.py) | Common event kinds, timestamps, and interval validation. This is not complete validation of every upstream payload variant. |
+| Identity, merging, aggregation | [`store.py`](../backend/agentboard/store.py), `ingest`, `stats` | Archives complete accepted Codex JSONL versions; no cross-source semantic deduplication. |
+| Model operations | [`models.py`](../backend/agentboard/models.py) | Explicit optional operations; importing a trace never calls a model. |
+| Display and provenance | [`static/app.js`](../frontend/app.js), [`static/provenance.js`](../frontend/provenance.js) | Descriptions are computed from stored source/kind/attributes at display time. |
 
 ## 3. Raw Codex files
 
@@ -137,7 +137,7 @@ Measured item commands use a separate conversion: strings unchanged; all-string 
 
 ### 3.5 Raw archive and export
 
-Implemented **2026-09-06** in [adapter](../agentboard/adapters/codex.py), [storage](../agentboard/store.py), [API](../agentboard/api.py), and [CLI](../agentboard/cli.py). Accepted UTF-8 Codex JSONL imports retain every input line as UTF-8 bytes in `raw_lines`, keyed by archive ID and one-based physical `sequence`. This includes blank lines, original timestamp spelling, whitespace, line endings, absent final newline, unknown fields/types, system/developer messages, content parts, and encrypted content. The archive does not decrypt, execute, redact, or normalize these bytes. HTTP gzip input archives the decompressed JSONL, not its compressed transport envelope. Invalid imports roll back both archive and normalized changes.
+Implemented **2026-09-06** in [adapter](../backend/agentboard/adapters/codex.py), [storage](../backend/agentboard/store.py), [API](../backend/agentboard/api.py), and [CLI](../backend/agentboard/cli.py). Accepted UTF-8 Codex JSONL imports retain every input line as UTF-8 bytes in `raw_lines`, keyed by archive ID and one-based physical `sequence`. This includes blank lines, original timestamp spelling, whitespace, line endings, absent final newline, unknown fields/types, system/developer messages, content parts, and encrypted content. The archive does not decrypt, execute, redact, or normalize these bytes. HTTP gzip input archives the decompressed JSONL, not its compressed transport envelope. Invalid imports roll back both archive and normalized changes.
 
 `raw_imports` records session ID, SHA-256 of concatenated source bytes, byte/line counts, archive creation time, and mapping version `codex-jsonl-v1`. Identical session/hash/mapping imports reuse an archive ID. Changed, appended, or shortened files create distinct archives and preserve prior versions. Latest means the most recently created distinct archive, not the longest file or most recent identical retry. Each distinct snapshot stores all its lines; storage grows with retained versions and has no automatic pruning.
 
@@ -145,7 +145,7 @@ Implemented **2026-09-06** in [adapter](../agentboard/adapters/codex.py), [stora
 
 Example: raw line 19 may emit both a user message and an inferred wait; normalized `sequence=19` locates the triggering line in a chosen archive. It does not identify the wait's starting line. Normalized events still lack explicit archive IDs and both-boundary references; reimport does not generally overwrite closed events, so a later archive may differ from their original evidence (DQ-02/DQ-06).
 
-Schema v3 adds the archive tables without reconstructing old evidence. Reimport original files to backfill older sessions and metadata. Archive retention covers successful Codex JSONL imports; OTLP still retains selected decoded evidence rather than complete wire bytes. Exact round-trip, changed/shortened retry, rollback, CLI newline preservation, and migration coverage: [synthetic tests](../tests/test_raw_traces.py).
+Schema v3 adds the archive tables without reconstructing old evidence. Reimport original files to backfill older sessions and metadata. Archive retention covers successful Codex JSONL imports; OTLP still retains selected decoded evidence rather than complete wire bytes. Exact round-trip, changed/shortened retry, rollback, CLI newline preservation, and migration coverage: [synthetic tests](../backend/tests/test_raw_traces.py).
 
 ## 4. Historical interval state machine
 
@@ -210,7 +210,7 @@ Current turn ID comes from parser state at emission, usually the upcoming turn w
 
 ### 4.4 Parallel tool groups
 
-Implemented **2026-09-06** as a derived view in [parallel.py](../agentboard/parallel.py), [Store.parallel_groups](../agentboard/store.py), and the timeline/inspector. `GET /api/v1/sessions/{sid}/parallel-groups?source=codex_jsonl` returns `items`, `scope=full_session_source`, and a method explanation. Omit `source` to inspect all sources separately. Search and event pagination do not alter membership or labels.
+Implemented **2026-09-06** as a derived view in [parallel.py](../backend/agentboard/parallel.py), [Store.parallel_groups](../backend/agentboard/store.py), and the timeline/inspector. `GET /api/v1/sessions/{sid}/parallel-groups?source=codex_jsonl` returns `items`, `scope=full_session_source`, and a method explanation. Omit `source` to inspect all sources separately. Search and event pagination do not alter membership or labels.
 
 | Rule / field | Mapping and meaning |
 | --- | --- |
@@ -228,7 +228,7 @@ Synthetic example: A=[0,3), B=[2,5), C=[4,7) seconds produces one group with thr
 
 Groups are recomputed from a single query over existing stored tools; no migration or reimport is needed. Source events, normalized exports, raw archives, and timing totals are unchanged. IDs remain stable while scope and membership remain the same; new/completed/changed intervals can merge groups or renumber labels. This is not a frozen analysis snapshot. The UI shows source-wide group counts and marks partial membership when filtering or pagination hides members. The inspector exposes derived membership separately from the normalized source event.
 
-Limitations: missing parent metadata can make nested operations look parallel; missing results can hide real overlap. The grouping does not recover nested calls absent from the normalized source, establish exact process lifetimes, or identify explicit model-request batches. A zero group count means no qualifying overlap was found, not proof of sequential execution. Coverage: [synthetic tests](../tests/test_parallel.py) include chains, triple overlap, boundaries, nanoseconds, scope separation, pagination/filter stability, and growing imports.
+Limitations: missing parent metadata can make nested operations look parallel; missing results can hide real overlap. The grouping does not recover nested calls absent from the normalized source, establish exact process lifetimes, or identify explicit model-request batches. A zero group count means no qualifying overlap was found, not proof of sequential execution. Coverage: [synthetic tests](../backend/tests/test_parallel.py) include chains, triple overlap, boundaries, nanoseconds, scope separation, pagination/filter stability, and growing imports.
 
 ## 5. Measured Codex items (`source=codex_item`)
 
@@ -429,7 +429,7 @@ Schema v5 adds `sessions.identity_kind`: `session`, `unattributed_trace`, or `un
 
 The dashboard exposes **Sessions** and **Unattributed telemetry** separately. Unattributed groups remain searchable, inspectable and exportable at their existing URLs, but are not counted as Codex sessions. Session counts cover only imported/observed identities and include automatic reviewers; they do not count human conversations or discover every local Codex task. See the [grouping audit](session-grouping-review.md).
 
-For existing databases, back up SQLite and run `agentboard repair-otlp-sessions`. It reconstructs the index from preserved decoded spans and applies the same rules transactionally; it does not recover missing telemetry or import local rollout files. Existing session URLs and session totals can change. Sources without unique conversation evidence remain separate trace buckets. [Regression tests](../tests/test_otlp_sessions.py) cover worker IDs, scope/nested identity, delayed evidence, conflicting conversations, parent-based attribution, multiple traces per conversation, worker-ID reuse, retries, raw preservation, v4 migration, and repair idempotency.
+For existing databases, back up SQLite and run `agentboard repair-otlp-sessions`. It reconstructs the index from preserved decoded spans and applies the same rules transactionally; it does not recover missing telemetry or import local rollout files. Existing session URLs and session totals can change. Sources without unique conversation evidence remain separate trace buckets. [Regression tests](../backend/tests/test_otlp_sessions.py) cover worker IDs, scope/nested identity, delayed evidence, conflicting conversations, parent-based attribution, multiple traces per conversation, worker-ID reuse, retries, raw preservation, v4 migration, and repair idempotency.
 
 | Rule | Trace | Log |
 | --- | --- | --- |
@@ -462,7 +462,7 @@ Conversation replay uses only events before the selected user input in `sequence
 
 Replay measures local wall-clock time around the gateway call, including discovery/fallback overhead. All retained/replacement message events use the new replay start timestamp; the response uses replay end. Those timestamps are not the original message times. A replay LLM event is measured even for dummy mode, so `dummy` must be considered before using it for model-performance analysis. Retained text is Normalized; new actual output is Model-generated; dummy output is Inferred.
 
-Native Codex continuation is separate: [`resume.make_plan`](../agentboard/resume.py) prepares a prior-completed-turn fork, or a fresh thread for first-input replacement. The explicit CLI executes the plan. Files are not rewound, native results are not automatically normalized into replay events, and successful plan construction is not proof of a valid controlled evaluation experiment. See the [continuation specification](specification.md) for supported boundaries.
+Native Codex continuation is separate: [`resume.make_plan`](../backend/agentboard/resume.py) prepares a prior-completed-turn fork, or a fresh thread for first-input replacement. The explicit CLI executes the plan. Files are not rewound, native results are not automatically normalized into replay events, and successful plan construction is not proof of a valid controlled evaluation experiment. See the [continuation specification](specification.md) for supported boundaries.
 
 ## 11. Verification and maintenance
 
@@ -470,19 +470,19 @@ Existing tests establish these covered boundaries, not universal correctness:
 
 | Claim | Evidence |
 | --- | --- |
-| Mirror handling, repeated prompts, structured commands, tool completion, parallel union, blocking/async waits | [`tests/test_codex.py`](../tests/test_codex.py) |
-| Exact nanoseconds, timezone normalization, interval validation, atomic/concurrent migration, cursor preservation | [`tests/test_timestamps.py`](../tests/test_timestamps.py) |
-| Protobuf/JSON identity, source separation, precision, invalid-batch rollback, input-request telemetry | [`tests/test_otlp.py`](../tests/test_otlp.py) |
-| Pagination/export, replay context isolation, dummy labeling, gateway errors, classification validation | [`tests/test_api_models.py`](../tests/test_api_models.py) |
-| Normalized endpoints versus inferred interpretation; calculated durations; model/dummy/retained origins | [`tests/provenance.test.cjs`](../tests/provenance.test.cjs) |
-| Native RPC completion arriving before turn-start response | [`tests/test_resume_rpc.py`](../tests/test_resume_rpc.py) |
+| Mirror handling, repeated prompts, structured commands, tool completion, parallel union, blocking/async waits | [`tests/test_codex.py`](../backend/tests/test_codex.py) |
+| Exact nanoseconds, timezone normalization, interval validation, atomic/concurrent migration, cursor preservation | [`tests/test_timestamps.py`](../backend/tests/test_timestamps.py) |
+| Protobuf/JSON identity, source separation, precision, invalid-batch rollback, input-request telemetry | [`tests/test_otlp.py`](../backend/tests/test_otlp.py) |
+| Pagination/export, replay context isolation, dummy labeling, gateway errors, classification validation | [`tests/test_api_models.py`](../backend/tests/test_api_models.py) |
+| Normalized endpoints versus inferred interpretation; calculated durations; model/dummy/retained origins | [`tests/provenance.test.cjs`](../frontend/tests/provenance.test.cjs) |
+| Native RPC completion arriving before turn-start response | [`tests/test_resume_rpc.py`](../backend/tests/test_resume_rpc.py) |
 
 Run from the repository root:
 
 ```sh
 uv run --extra dev pytest -q
-node --test tests/provenance.test.cjs
-uv run --extra dev ruff check agentboard examples tests
+node --test frontend/tests/provenance.test.cjs
+uv run --extra dev ruff check backend examples
 ```
 
 Focused temporary-data cases reproduced injected context counted as user input, prompt → completion yielding no LLM span, duplicate call IDs losing the earlier call, and rewritten input text ignored on reimport. These are observations, **not regression guarantees or accepted behavior**; proposed checks are in the [gap register](data-quality-gaps.md).

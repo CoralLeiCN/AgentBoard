@@ -26,7 +26,7 @@ The 17 conversation IDs comprise nine rollout-backed IDs and eight live-telemetr
 
 Applying the correction to the fixed snapshot reassigned **1,464 events**, leaving **17 session identities and 3,164 unattributed trace groups**. All **132,202 event IDs, row IDs and preserved decoded OTLP records** matched before and after by SHA-256 over their canonical JSON representation. These figures describe that snapshot; live counts continue to change.
 
-[Regression tests](../tests/test_otlp_sessions.py) cover list scope, migration, delayed identity, aliases, multiple traces per conversation, mixed parent/child attribution, conflicting evidence, retries, and evidence preservation. Exact current rules, API scope and the existing-data repair command live in [data lineage §9](data-lineage.md#9-live-telemetry-mappings).
+[Regression tests](../backend/tests/test_otlp_sessions.py) cover list scope, migration, delayed identity, aliases, multiple traces per conversation, mixed parent/child attribution, conflicting evidence, retries, and evidence preservation. Exact current rules, API scope and the existing-data repair command live in [data lineage §9](data-lineage.md#9-live-telemetry-mappings).
 
 ## Remaining limits
 

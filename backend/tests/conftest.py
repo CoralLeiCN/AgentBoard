@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from agentboard.api import create_app
 from agentboard.config import Settings
 
-FIXTURE = Path(__file__).parents[1] / "examples/fixtures/codex-session.jsonl"
+FIXTURE = Path(__file__).parents[2] / "examples/fixtures/codex-session.jsonl"
 
 
 @pytest.fixture

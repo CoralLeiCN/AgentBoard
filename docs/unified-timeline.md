@@ -4,7 +4,7 @@ Implemented 2026-09-06. The dashboard defaults to **Unified timeline** when a se
 
 ## Composition rules
 
-The [read model](../agentboard/unified.py) reads normalized events without changing stored records or raw archives.
+The [read model](../backend/agentboard/unified.py) reads normalized events without changing stored records or raw archives.
 
 | Inputs | Display behavior | Origin |
 | --- | --- | --- |
@@ -27,4 +27,4 @@ The new `GET /api/v1/sessions/{sid}/unified` endpoint returns composed events, s
 
 No reimport or database migration is required. Composition currently loads the session's Codex events into memory; large sessions may need a cached/indexed read model later. Missing identity links and nesting metadata remain correctness limits, not inferred relationships.
 
-Verification: [synthetic composition and API tests](../tests/test_unified.py) cover exact matches, ambiguous and missing identities, turn boundaries, explicit children, incomplete-item fallback, provenance preservation, separate timing totals, filter/pagination stability and unchanged source exports.
+Verification: [synthetic composition and API tests](../backend/tests/test_unified.py) cover exact matches, ambiguous and missing identities, turn boundaries, explicit children, incomplete-item fallback, provenance preservation, separate timing totals, filter/pagination stability and unchanged source exports.

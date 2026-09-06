@@ -173,6 +173,7 @@ def test_features_auth_and_same_origin(tmp_path):
         )
         assert c.get("/api/v1/sessions", headers={"Origin": "https://untrusted.example"}).status_code == 403
         assert c.get("/").status_code == 200
+        assert "AgentBoard" in c.get("/static/app.js").text
         assert c.get("/", headers={"Host": "attacker.example"}).status_code == 400
 
 

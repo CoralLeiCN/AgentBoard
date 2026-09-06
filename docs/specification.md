@@ -263,7 +263,7 @@ Label grouped tool rows “Parallel P1”, “Parallel P2”, etc. in Timeline a
 
 Compute groups from the full selected source through `/parallel-groups`, independently of the loaded event page/search. Existing imports work without backfill; source events and timing totals remain unchanged. Labels describe recorded overlap, with no claim of exact process concurrency or an explicit model batch. Missing parent relationships remain a limitation.
 
-Acceptance: the synthetic demo labels its two initial shell calls as one group, peak 2, with 1,100 ms overlapping time. Filtering to one member keeps its label and shows “1/2 tools shown”. Three calls connected by successive overlaps can form one group with peak 2. Touching, open, zero-length, cross-source, cross-turn, or known parent/child intervals do not create false groups. [Automated coverage](../tests/test_parallel.py).
+Acceptance: the synthetic demo labels its two initial shell calls as one group, peak 2, with 1,100 ms overlapping time. Filtering to one member keeps its label and shows “1/2 tools shown”. Three calls connected by successive overlaps can form one group with peak 2. Touching, open, zero-length, cross-source, cross-turn, or known parent/child intervals do not create false groups. [Automated coverage](../backend/tests/test_parallel.py).
 
 ## 7. User inputs and internal context
 
@@ -439,7 +439,7 @@ Maintain the specification alongside feature changes. Validate behavior at the r
 | View preference | Toggle both ways, reopen another event, reload, default behavior, unavailable storage. |
 | Model features | Validated categories, labeled dummy results, request failures, bounded transcripts, preserved source session. |
 | Native continuation | Plan validation and fake app-server protocol tests; no paid model execution required for unit tests. |
-| App-server schema workflow | Stored manifest/file/reference integrity; version and file drift detection; no-op refreshes; removed-file cleanup; preservation on failed generation/replacement. [Tests](../tests/test_schema_workflow.py) use a fake CLI. |
+| App-server schema workflow | Stored manifest/file/reference integrity; version and file drift detection; no-op refreshes; removed-file cleanup; preservation on failed generation/replacement. [Tests](../backend/tests/test_schema_workflow.py) use a fake CLI. |
 | INPUT-01 follow-up | Environment context/internal requests excluded from human input/branch/wait semantics once implemented. |
 
 For development dependencies and existing checks:
@@ -447,13 +447,13 @@ For development dependencies and existing checks:
 ```sh
 uv sync --extra dev
 uv run --extra dev pytest -q
-node --test tests/provenance.test.cjs
-uv run --extra dev ruff check agentboard examples scripts tests
+node --test frontend/tests/provenance.test.cjs
+uv run --extra dev ruff check backend examples scripts
 ```
 
 Use browser checks for visuals/persistence and Node for JS tests/syntax; Node is not an app runtime dependency. Acceptance criteria are not claims of complete automated coverage.
 
-Implementation references: [CLI](../agentboard/cli.py), [Codex adapter](../agentboard/adapters/codex.py), [telemetry](../agentboard/otlp.py), [storage](../agentboard/store.py), [API](../agentboard/api.py), [field-origin descriptions](../agentboard/static/provenance.js), [UI](../agentboard/static/app.js), [models](../agentboard/models.py), and [native resume](../agentboard/resume.py). See also [architecture](architecture.md) and [runnable examples](../examples/README.md).
+Implementation references: [CLI](../backend/agentboard/cli.py), [Codex adapter](../backend/agentboard/adapters/codex.py), [telemetry](../backend/agentboard/otlp.py), [storage](../backend/agentboard/store.py), [API](../backend/agentboard/api.py), [field-origin descriptions](../frontend/provenance.js), [UI](../frontend/app.js), [models](../backend/agentboard/models.py), and [native resume](../backend/agentboard/resume.py). See also [architecture](architecture.md) and [runnable examples](../examples/README.md).
 
 ### 12.1 Required examples
 

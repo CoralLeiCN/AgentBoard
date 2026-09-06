@@ -21,6 +21,19 @@ uv run agentboard --config config/dev.toml serve
 
 Open [the dev dashboard on port 4319](http://127.0.0.1:4319) and choose **Load demo**. Dev uses a separate database and rejects live OTel uploads. The existing collector remains `uv run agentboard serve` on port 4318. See [isolated development and snapshots](docs/development.md). Codex sessions open in a [unified timeline](docs/unified-timeline.md), with source views available for debugging. For a smaller installation use `uv sync`, or `pip install -e .`; install `.[models]` to enable the OpenAI client. The `dev` extra includes the SDK and HTTP client used by examples.
 
+## Repository layout
+
+The repository follows the backend/frontend boundary of the [Full Stack FastAPI Template](https://github.com/fastapi/full-stack-fastapi-template) while retaining AgentBoard's smaller local-first stack.
+
+| Directory | Current contents |
+| --- | --- |
+| [`backend/`](backend/) | Installable `agentboard` Python package and pytest suite |
+| [`frontend/`](frontend/) | Dependency-free HTML, CSS, JavaScript, demo data, and Node test |
+| [`config/`](config/) | Runtime configuration, including the isolated dev profile |
+| [`docs/`](docs/) | Architecture, behavior, evidence limits, and development workflow |
+
+The root `pyproject.toml` keeps existing `uv run agentboard ...` commands stable. Source checkouts serve `frontend/` directly; wheel builds bundle the same files under `agentboard/static`.
+
 Import real history without changing Codex files:
 
 ```sh
@@ -159,8 +172,8 @@ The repository keeps generated Codex app-server schemas with a producing-version
 
 ```sh
 uv run --extra dev pytest -q
-node --test tests/provenance.test.cjs
-uv run --extra dev ruff check agentboard examples scripts tests
+node --test frontend/tests/provenance.test.cjs
+uv run --extra dev ruff check backend examples scripts
 uv run python examples/benchmark.py --events 10000
 ```
 

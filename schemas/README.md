@@ -31,7 +31,7 @@ No timestamps or machine-specific paths enter the manifest, so repeated generati
 ## Codex upgrade workflow
 
 1. After installing a Codex upgrade, run `check` against the executable intended for AgentBoard. Do not infer its version from a different desktop or CLI installation.
-2. If drift is reported, run `update`, then review `git diff --stat -- schemas/codex-app-server` and `git diff -- schemas/codex-app-server`. Inspect the manifest version/flags and changes affecting AgentBoard's requests and notifications, especially [native continuation](../agentboard/resume.py).
+2. If drift is reported, run `update`, then review `git diff --stat -- schemas/codex-app-server` and `git diff -- schemas/codex-app-server`. Inspect the manifest version/flags and changes affecting AgentBoard's requests and notifications, especially [native continuation](../backend/agentboard/resume.py).
 3. Adapt affected app-server integration code and its tests. Separately review raw rollout fixtures when the producer changes; this API bundle cannot validate their format. Advance the rollout mapping version only when rollout normalization semantics change.
 4. Run `check` again and the [regular verification commands](../README.md#examples-and-validation). Commit the generated bundle, manifest, relevant integration changes, and documentation together. The baseline identifies inspected schema output, not a claim that every method or Codex release is supported.
 

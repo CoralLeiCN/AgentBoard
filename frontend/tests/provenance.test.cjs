@@ -1,10 +1,10 @@
-// Run with: node --test tests/provenance.test.cjs (no npm dependencies).
+// Run with: node --test frontend/tests/provenance.test.cjs (no npm dependencies).
 const assert=require('node:assert/strict');
 const {test}=require('node:test');
 const {readFileSync}=require('node:fs');
 const vm=require('node:vm');
 const context=vm.createContext({});
-vm.runInContext(readFileSync('agentboard/static/provenance.js','utf8'),context);
+vm.runInContext(readFileSync('frontend/provenance.js','utf8'),context);
 const event={id:'e',row_id:3,sequence:9,session_id:'s',source:'codex_jsonl',kind:'llm',name:'LLM response (estimated)',timing:'estimated',start_time:'2026-09-06T08:51:24.032000000Z',end_time:'2026-09-06T08:51:26.870000000Z',text:'',attributes:{basis:'gap between rollout items; includes orchestration'}};
 const fields=(overrides={})=>Object.fromEntries(context.describeEvent({...event,...overrides}).fields.map(f=>[f.field,f]));
 
