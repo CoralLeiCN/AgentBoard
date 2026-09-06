@@ -1,0 +1,19 @@
+# Merge into ~/.codex/config.toml yourself. Do not create a duplicate [otel] section.
+# Codex batches exports asynchronously. User prompts stay redacted by default.
+[otel]
+environment = "local"
+log_user_prompt = false
+
+[otel.exporter.otlp-http]
+endpoint = "http://127.0.0.1:4318/v1/logs"
+protocol = "binary"
+
+[otel.trace_exporter.otlp-http]
+endpoint = "http://127.0.0.1:4318/v1/traces"
+protocol = "binary"
+
+# If AGENTBOARD_API_TOKEN is set, configure matching headers on BOTH exporters:
+# [otel.exporter.otlp-http.headers]
+# Authorization = "Bearer your-token"
+# [otel.trace_exporter.otlp-http.headers]
+# Authorization = "Bearer your-token"
