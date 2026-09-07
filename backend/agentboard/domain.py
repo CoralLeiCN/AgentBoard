@@ -38,6 +38,7 @@ class Session(BaseModel):
     started_at: Timestamp
     metadata: dict = Field(default_factory=dict)
     identity_kind: Literal["session", "unattributed_trace", "unattributed_resource"] = "session"
+    field_lineage: dict = Field(default_factory=dict, exclude=True)
 
 
 class Event(BaseModel):
@@ -59,6 +60,7 @@ class Event(BaseModel):
     attributes: dict = Field(default_factory=dict)
     # Import-only provenance; persisted separately from the normalized event.
     raw_line_numbers: list[int] = Field(default_factory=list, exclude=True)
+    field_lineage: dict = Field(default_factory=dict, exclude=True)
 
     @model_validator(mode="after")
     def valid_interval(self):

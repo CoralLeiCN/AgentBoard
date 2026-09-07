@@ -71,7 +71,7 @@ def test_exact_raw_roundtrip_and_metadata(client, compressed):
     assert archive["sha256"] == hashlib.sha256(body).hexdigest()
     assert archive["byte_count"] == len(body)
     assert archive["line_count"] == len(body.splitlines())
-    assert archive["mapping_version"] == "codex-jsonl-v3"
+    assert archive["mapping_version"] == "codex-jsonl-v4"
     assert client.get(path + "/raw").content == body
     meta = client.get(path).json()["metadata"]
     assert meta["thread_source"] == "guardian_review"

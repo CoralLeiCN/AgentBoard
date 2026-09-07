@@ -29,7 +29,7 @@ flowchart LR
 | [`api.py`](../backend/agentboard/api.py) | Shared routes, auth, host/origin checks, body limits, backpressure, configuration, plugin registration. CPU/DB/model work runs in worker threads. Acknowledgment follows commit under WAL/`synchronous=NORMAL`; power-loss durability follows SQLite NORMAL semantics. |
 | [`models.py`](../backend/agentboard/models.py) | Optional OpenAI client, bounded transcript construction, validated classification, text replay. No ingestion-time model calls or tool execution. |
 | [`resume.py`](../backend/agentboard/resume.py) | Explicit CLI-only Codex JSON-lines RPC over stdio. Neither modifies rollout files nor exposes remote command execution. |
-| [`frontend/`](../frontend/) | Plain-JavaScript UI over the shared API; no separate frontend API/build pipeline. Source checkouts serve these files directly, and wheel builds bundle them as package data. Field-origin descriptions are computed here, not a persisted backend evidence contract. |
+| [`frontend/`](../frontend/) | Plain-JavaScript UI over the shared API; no separate frontend API/build pipeline. Source checkouts serve these files directly, and wheel builds bundle them as package data. Codex field origins and source pointers come from the backend lineage API; other-source descriptions remain display-time mappings. See [field lineage](data-lineage.md#36-per-field-codex-lineage). |
 
 ## Identity and ordering
 

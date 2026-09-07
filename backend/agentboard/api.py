@@ -210,6 +210,14 @@ def create_app(settings=None):
     def event_raw(sid: str, event_id: str):
         return store.event_raw(sid, event_id)
 
+    @app.get("/api/v1/sessions/{sid}/lineage")
+    def session_lineage(sid: str):
+        return store.field_lineage(sid)
+
+    @app.get("/api/v1/sessions/{sid}/events/{event_id}/lineage")
+    def event_lineage(sid: str, event_id: str):
+        return store.field_lineage(sid, event_id)
+
     @app.get("/api/v1/sessions/{sid}/raw")
     def raw_export(sid: str, import_id: int | None = Query(None, ge=1)):
         archive = store.raw_import(sid, import_id)

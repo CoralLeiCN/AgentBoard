@@ -35,6 +35,7 @@ packages = ["backend/agentboard"]
 "frontend/demo.jsonl" = "agentboard/static/demo.jsonl"
 "frontend/index.html" = "agentboard/static/index.html"
 "frontend/provenance.js" = "agentboard/static/provenance.js"
+"frontend/lineage.js" = "agentboard/static/lineage.js"
 "frontend/style.css" = "agentboard/static/style.css"
 
 [tool.pytest.ini_options]

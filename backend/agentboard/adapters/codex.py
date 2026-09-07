@@ -5,6 +5,7 @@ import re
 import shlex
 
 from ..domain import Event, RawLine, RawTraceEnd, Session, is_user_input_tool, stable_id
+from ..lineage import CodexLineage, copied, ref, spec
 from ..timestamps import format_timestamp, normalize_timestamp
 
 
@@ -27,7 +28,7 @@ def command_text(command):
 
 
 class CodexAdapter:
-    mapping_version = "codex-jsonl-v3"
+    mapping_version = "codex-jsonl-v4"
 
     def parse(self, lines):
         sid = None
@@ -41,6 +42,7 @@ class CodexAdapter:
         session = None
         seq = 0
         waiting_since = None
+        lineage = CodexLineage()
 
         def wait_until(ts):
             nonlocal waiting_since
@@ -62,7 +64,7 @@ class CodexAdapter:
 
         def event(kind, name, ts, suffix="", **kwargs):
             kwargs.setdefault("raw_line_numbers", [seq])
-            return Event(
+            return lineage.event(Event(
                 id=stable_id(sid, seq, suffix),
                 session_id=sid,
                 sequence=seq,
@@ -71,7 +73,7 @@ class CodexAdapter:
                 start_time=ts,
                 turn_id=turn,
                 **kwargs,
-            )
+            ), r, seq, suffix)
 
         def llm_until(ts):
             if active and anchor is not None and not pending and ts > anchor:
@@ -107,14 +109,17 @@ class CodexAdapter:
                     started_at=ts,
                     metadata=dict(p),
                 )
+                lineage.session(session, r, seq)
                 yield session
                 continue
             if sid is None:
                 raise ValueError("The rollout must begin with session_meta")
             if outer == "turn_context":
                 turn = p.get("turn_id", turn)
+                lineage.context(p, seq)
                 if p.get("model"):
                     session.metadata["model"] = p["model"]
+                    session.field_lineage.update(copied(p["model"], "/metadata/model", seq, "/payload/model"))
                     yield session
             if outer == "event_msg" and kind == "item_completed":
                 item = p.get("item", {})
@@ -147,7 +152,7 @@ class CodexAdapter:
                     if item_kind == "tool" and is_user_input_tool(name):
                         item_kind = "user_wait"
                         basis += "; blocking input request lifetime, including delivery overhead"
-                    yield Event(
+                    yield lineage.item(Event(
                         id=stable_id(sid, "item", item.get("id", seq)),
                         session_id=sid,
                         sequence=seq,
@@ -168,10 +173,12 @@ class CodexAdapter:
                         status="error"
                         if item.get("exit_code") not in (0, None) or item.get("status") == "failed"
                         else "ok",
-                    )
+                    ), r, seq)
             if outer == "event_msg" and kind == "task_started":
                 turn = p.get("turn_id", turn)
+                lineage.context(p, seq)
                 active, anchor = True, ts
+                lineage.anchor = ref(seq, "/timestamp", "interval_start")
             if outer == "response_item" and kind == "message" and p.get("role") == "user":
                 wait = wait_until(ts)
                 if wait:
@@ -183,11 +190,13 @@ class CodexAdapter:
                 fallback_user = None
                 seen_user = text
                 active, anchor = True, ts
+                lineage.anchor = ref(seq, "/timestamp", "interval_start")
                 yield event(
                     "user", "User input", ts, text=text, attributes={"previous_turn_id": previous_turn}
                 )
                 if session.title == "Untitled session":
                     session.title = text.strip().split("\n")[0][:100] or "Untitled session"
+                    lineage.title(session, lineage.text(r, seq))
                     yield session
             elif outer == "event_msg" and kind == "user_message":
                 wait = wait_until(ts)
@@ -202,8 +211,10 @@ class CodexAdapter:
                     )
                 if session.title == "Untitled session":
                     session.title = text.strip().split("\n")[0][:100] or "Untitled session"
+                    lineage.title(session, lineage.text(r, seq))
                     yield session
                 active, anchor = True, ts
+                lineage.anchor = ref(seq, "/timestamp", "interval_start")
             elif outer == "response_item" and kind in ("function_call", "custom_tool_call"):
                 waiting_since = None
                 span = llm_until(ts)
@@ -246,10 +257,12 @@ class CodexAdapter:
                         r"(?:exit(?:ed with)? code|Process exited with code)\s*[:=]?\s*[1-9]", output, re.I
                     ):
                         tool.status = "error"
+                    lineage.complete(tool, seq)
                     yield tool
                 else:
                     yield event("event", "Unmatched tool output", ts, text=output, status="incomplete")
                 anchor = ts if active and not pending else None
+                lineage.anchor = ref(seq, "/timestamp", "interval_start") if anchor is not None else None
             elif outer == "response_item" and kind in ("message", "reasoning"):
                 if p.get("role") in ("developer", "system"):
                     continue
@@ -258,6 +271,7 @@ class CodexAdapter:
                 if span:
                     yield span
                 anchor = ts if active else None
+                lineage.anchor = ref(seq, "/timestamp", "interval_start") if anchor is not None else None
                 text = content_text(p.get("content", p.get("summary", [])))
                 yield event(
                     "assistant", "Reasoning summary" if kind == "reasoning" else "Assistant", ts, text=text
@@ -265,14 +279,20 @@ class CodexAdapter:
                 if p.get("phase") == "final_answer":
                     active, anchor = False, None
                     waiting_since = ts
+                    lineage.waiting = ref(seq, "/timestamp", "interval_start")
             elif outer == "event_msg" and kind in ("task_complete", "turn_aborted"):
                 if fallback_user is not None:
                     yield fallback_user
                     fallback_user = None
                 previous_turn = p.get("turn_id", turn) if kind == "task_complete" else previous_turn
+                if kind == "task_complete":
+                    lineage.previous_turn = (spec("normalized", "Turn ID propagated from preceding task_complete.",
+                                                  ref(seq, "/payload/turn_id", "context"))
+                                             if "turn_id" in p else lineage.turn)
                 seen_user = None
                 active, anchor = False, None
                 waiting_since = ts if kind == "task_complete" else None
+                lineage.waiting = ref(seq, "/timestamp", "interval_start") if waiting_since else None
                 yield event("event", kind, ts, status="ok" if kind == "task_complete" else "interrupted")
             elif outer in ("compacted",) or (outer == "event_msg" and kind == "thread_rolled_back"):
                 yield event("event", outer if outer == "compacted" else kind, ts, attributes=p)
@@ -286,5 +306,6 @@ class CodexAdapter:
             yield fallback_user
         for tool in pending.values():
             tool.status = "incomplete"
+            lineage.incomplete(tool)
             yield tool
         yield RawTraceEnd(sid, self.mapping_version)
