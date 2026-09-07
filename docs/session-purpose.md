@@ -81,15 +81,13 @@ In the [dev UI](http://127.0.0.1:4319), choose **Classify purpose** inside a ses
 
 ## Live Responses API test
 
-Implemented 2026-09-07. [The opt-in test](../backend/tests/test_classification_endpoint_e2e.py) imports four synthetic sessions into temporary databases, calls AgentBoard's classification API using a real Responses endpoint, checks debugging/writing/coding/analysis labels, and verifies saved results. It requests the strict schema, checks explanatory reasons, and prints model identity, reason, schema/input hashes, and elapsed seconds. It uses `model_mode=local` with no dummy fallback, plugins, or live telemetry. Neither the collector nor dev database is used. Normal test runs skip these cases unless an endpoint is supplied.
+Implemented 2026-09-07. [The opt-in test](../backend/tests/test_classification_endpoint_e2e.py) imports four synthetic sessions into temporary databases, calls AgentBoard's classification API using a real Responses endpoint, checks debugging/writing/coding/analysis labels, and verifies saved results. It requests the strict schema, checks explanatory reasons, and prints model identity, reason, schema/input hashes, and elapsed seconds. It uses `model_mode=local` with no dummy fallback, plugins, or live telemetry. Neither the collector nor dev database is used. Normal test runs skip these cases unless explicitly enabled.
 
 ```sh
-AGENTBOARD_E2E_CLASSIFICATION_BASE_URL=http://localhost:30000/v1 \
-AGENTBOARD_E2E_CLASSIFICATION_MODEL=my-model \
-uv run --extra dev pytest -q -s backend/tests/test_classification_endpoint_e2e.py
+uv run --extra dev pytest --run-private-e2e -q -s backend/tests/test_classification_endpoint_e2e.py
 ```
 
-The model variable is optional; without it, the gateway discovers the first advertised model. Set `AGENTBOARD_E2E_CLASSIFICATION_API_KEY` if the endpoint needs a credential. The live test allows 120 seconds per request, configurable through `AGENTBOARD_E2E_CLASSIFICATION_TIMEOUT_SECONDS`; normal gateway calls retain the 30-second default unless `model_timeout_seconds` / `AGENTBOARD_MODEL_TIMEOUT_SECONDS` is set. This test checks protocol compatibility and four simple purposes, not general classification accuracy. Its settings do not switch the running dev dashboard out of dummy mode.
+Live tests accept only `http://192.168.1.220:30000/v1`. The shared harness discovers a single advertised model, or uses `AGENTBOARD_E2E_CLASSIFICATION_MODEL`; multiple advertised models require a pin. Set `AGENTBOARD_E2E_CLASSIFICATION_API_KEY` if the private endpoint needs a credential. See [private model tests](development.md#private-model-tests). The live test allows 120 seconds per request, configurable through `AGENTBOARD_E2E_CLASSIFICATION_TIMEOUT_SECONDS`; normal gateway calls retain the 30-second default. This test checks protocol compatibility and four simple purposes, not general classification accuracy. Its settings do not switch the dev dashboard out of dummy mode.
 
 ## Run an external agent
 

@@ -210,18 +210,15 @@ uv run python examples/benchmark.py --events 10000
 
 Tests cover imports, parallel timing, missing/invalid events, reimports, OTLP encodings and hierarchy, pagination, exports, classification/model failures, context branching, configuration, and plugin loading. The native Codex branch protocol is tested with a fake app-server; a real paid Codex generation is not required to run the test suite.
 
-An opt-in end-to-end test can instead run Codex against an operator-provided [custom Responses API provider](https://learn.chatgpt.com/docs/config-file/config-advanced#custom-model-providers) and verify that AgentBoard receives both its logs and traces. It starts an isolated loopback receiver, AgentBoard database, and Codex home, so it cannot read the user's configuration or OAuth state. Copy [`example.env`](example.env) to the ignored `.env`, replace the placeholders, and export it into the test shell. The key is optional for endpoints that do not require bearer authentication; the endpoint and any resulting cost remain operator-controlled.
+Live Codex and classification tests use only the private model endpoint **`http://192.168.1.220:30000/v1`**, with no hosted-provider fallback. They are opt-in; normal tests need no model calls. The Codex test uses an isolated home, receiver and database. See [private model tests](docs/development.md#private-model-tests) for model discovery, optional credentials, and isolation details.
 
 ```sh
-cp example.env .env
-# Edit .env before continuing.
-set -a
-. ./.env
-set +a
-uv run --extra dev pytest -m e2e backend/tests/test_codex_endpoint_e2e.py -q
+uv run --extra dev pytest --run-private-e2e -m e2e -q
 ```
 
-Without both `AGENTBOARD_E2E_CODEX_BASE_URL` and `AGENTBOARD_E2E_CODEX_MODEL`, the external test skips before starting a receiver or Codex process. The configured service must implement the Responses API expected by Codex, including streaming responses; a Chat Completions-only endpoint is not sufficient.
+The service must implement streaming Responses for Codex and structured Responses for classification. An unavailable endpoint fails the live test. [`example.env`](example.env) documents optional model pins; otherwise a single advertised model is discovered automatically.
+
+For real local development data, [seed a shared baseline and checkpoint](docs/development.md#automatic-worktree-data-setup) from complete selected Codex rollouts. Each worktree snapshots its own writable database. All source lines remain archived in the local database; real data and backups stay ignored and must never be committed or uploaded. [AGENTS.md](AGENTS.md) gives agents the required setup and test policy.
 
 For existing OTel data affected by numeric worker IDs appearing as sessions, back up the database and run `uv run agentboard repair-otlp-sessions`. The repair preserves recorded spans and event IDs, associates spans using unambiguous conversation evidence, and leaves unresolved activity in trace buckets. See [OTLP correlation rules](docs/data-lineage.md#9-live-telemetry-mappings). Timeline now displays internal timed spans as well as LLM/tool/wait operations.
 

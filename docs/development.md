@@ -42,7 +42,7 @@ uv run agentboard --config config/dev.toml serve
 
 The snapshot command opens the source read-only and uses SQLite's backup API, including committed WAL data. It does not instantiate the source `Store`, migrate it, or reassign its events. The destination must be new; existing databases and manifests are never overwritten. Subsequent live writes do not appear in the snapshot.
 
-A sibling `dev.db.snapshot.json` records source/destination paths, creation time, row counts and the database SHA-256 at creation. The snapshot can subsequently change through explicit imports, schema migrations or other dev actions; the manifest describes its initial state. Snapshot files and manifests are ignored by Git.
+A sibling `dev.db.snapshot.json` records source/destination paths, creation time, counts of sessions/events/raw imports/raw lines, and the database SHA-256 at creation. The snapshot can subsequently change through explicit imports, schema migrations or other dev actions; the manifest describes its initial state. Database snapshots are created with owner-only permissions. Snapshot files and manifests are ignored by Git.
 
 For another snapshot, choose a new destination explicitly:
 
@@ -53,23 +53,53 @@ uv run agentboard --config config/dev.toml --database .agentboard/review-2.db se
 
 ## Automatic worktree data setup
 
-Workflow assumption (2026-09-07): new worktrees for parallel agent work are created from the main checkout. That checkout can hold a shared `.agentboard/baseline.db`; when present, each worktree gets its own writable `.agentboard/dev.db` copy.
+Implemented 2026-09-07. The main checkout holds the fixed shared `.agentboard/baseline.db`; each worktree gets its own writable `.agentboard/dev.db`. Share the starting dataset, not a writable SQLite file. Keep the main checkout and its `.agentboard/` directory on this machine. A separate clone or host needs its own local setup.
 
-Implemented 2026-09-07. The [Codex environment](../.codex/environments/environment.toml) installs dependencies, then snapshots the shared baseline when available through an inline shell step. Codex runs the selected environment's setup script when creating a worktree; see [local environments](https://learn.chatgpt.com/docs/environments/local-environment).
+**Create the baseline once.** Select a few completed real sessions from local Codex `sessions/` or `archived_sessions/`, covering multiple turns, tool use, usage records, and internal/subagent activity. Pass complete files explicitly:
 
-To seed worktrees with a shared dataset, create `.agentboard/baseline.db` once in the main checkout from an explicitly chosen dataset. For example, from the main checkout, with its dev server stopped:
-
-```sh
-uv run agentboard --config config/dev.toml --database .agentboard/baseline.db snapshot --source .agentboard/dev.db
+```text
+uv run python scripts/seed_dev_data.py /absolute/path/to/rollout-one.jsonl /absolute/path/to/rollout-two.jsonl
 ```
 
-Setup uses `git rev-parse --path-format=absolute --git-common-dir` to locate the shared `.git` directory, then takes its parent as the main checkout. No username or repository location is hardcoded, and paths containing spaces are supported. It snapshots the baseline into the current checkout's `.agentboard/dev.db`. Each copy is writable and independent; the source is opened read-only. The existing `.agentboard/` Git ignore rule covers the baseline, copies and manifests. Keep the baseline fixed while comparing branches.
+The [seed script](../scripts/seed_dev_data.py) imports all records through the normal adapter, verifies SHA-256 equality between each source and its raw export, checks SQLite integrity, creates a timestamped recovery database under the main checkout's `.agentboard/checkpoints/`, then snapshots that checkpoint to `baseline.db`. Source paths and hashes live in the database's `dev_seed_sources` table. It refuses existing destinations and publishes no baseline after a failed import. A changed source fails verification; select fixed completed files. The checkpoint is a separate local recovery copy, not protection against loss of the disk.
 
-Existing dev databases are preserved. If the baseline is absent, setup prints a notice and succeeds without creating a database or manifest; [start with fixtures](#start-with-fixtures) to load dev data. Present but invalid baselines (including broken symlinks) and snapshot failures still fail setup. After creating the baseline, rerun the environment setup for existing worktrees; this does not replace an existing database or refresh it with later baseline changes.
+**Retain all local evidence.** Preserve every line, message, tool output, unknown event, internal input, and compaction/rollback record in the selected files. Normalized events cover recognized mappings; the complete `raw_lines` archive retains unsupported records too. Do not cap events, take excerpts, redact, summarize, or delete history to reduce this dataset. This preserves the complete available rollout file, not unrecorded upstream model state or separate telemetry that was never imported. Seeding and snapshotting make no model request.
 
-Commit the environment and include it in the branch used to create future worktrees. This assumes a normal clone with `.git` inside the main checkout; bare repositories and separately located Git directories are unsupported. Setup initializes data only; the dev server still uses port 4319, so simultaneous servers require a separate port-policy change.
+Databases, archives, checkpoint copies and manifests are local only under ignored `.agentboard/`. Do not add real rollouts to the repository, force-add ignored files, upload them, or paste their contents/identifiers into docs, PRs or issues. Existing reviewed redacted fixtures are separate; new committed regression tests should use synthetic data.
 
-Verification: [setup tests](../backend/tests/test_worktree_setup.py) run the environment's shell script against temporary Git worktrees and synthetic SQLite data to check discovery, independent writable copies, reruns, skipping absent baselines, adding a baseline later and rejecting invalid databases. Dependency installation is bypassed in these tests.
+**In every worktree**, run the selected [Codex environment](../.codex/environments/environment.toml), which installs dependencies and snapshots an available baseline only when the local dev database is absent. Codex runs the selected environment during worktree creation; see [local environments](https://learn.chatgpt.com/docs/environments/local-environment). The equivalent manual commands, from that worktree's root, are:
+
+```sh
+set -e
+uv sync --locked --extra dev
+
+if [ ! -e .agentboard/dev.db ]; then
+  agentboard_git_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
+  agentboard_main_root="$(dirname "$agentboard_git_dir")"
+  agentboard_baseline="$agentboard_main_root/.agentboard/baseline.db"
+  if [ -e "$agentboard_baseline" ] || [ -L "$agentboard_baseline" ]; then
+    uv run agentboard --config config/dev.toml --database .agentboard/dev.db snapshot \
+      --source "$agentboard_baseline"
+  else
+    printf 'Skipping dev database snapshot: no baseline at %s.\n' "$agentboard_baseline"
+    printf 'Start the dev server and use Load demo, or import a fixture (see docs/development.md).\n'
+  fi
+fi
+uv run agentboard --config config/dev.toml serve
+```
+
+Git discovery works from main and linked worktrees, including paths with spaces. It assumes a normal clone with `.git` inside the main checkout; bare repositories and separately located Git directories are unsupported. If the baseline is absent, setup prints a notice and succeeds without a database or manifest; use fixtures or create the baseline and rerun setup before comparing branches with shared data. Present but invalid baselines (including broken symlinks) and snapshot failures still fail setup. Never symlink the dev database to the baseline or serve from a checkpoint. Existing dev databases and their edits are preserved; setup does not automatically refresh them. Check their `.snapshot.json` provenance before assuming they use the current baseline. Include the environment and these instructions in the branch used to create worktrees. Simultaneous dev servers need distinct ports, e.g. `serve --port 4320`.
+
+**Checkpoint and recover.** Before replacing a dataset, changing its schema, or doing destructive experiments, use `snapshot --source` with a new `.agentboard/checkpoints/<name>.db` destination. Keep the initial seed checkpoint fixed. To return to it, restore into a new writable file:
+
+```text
+uv run agentboard --config config/dev.toml --database .agentboard/restored.db snapshot --source /absolute/path/to/main/.agentboard/checkpoints/baseline-TIMESTAMP.db
+uv run agentboard --config config/dev.toml --database .agentboard/restored.db serve
+```
+
+Do not overwrite or delete an existing dev database as a setup shortcut. For a deliberate refresh of `.agentboard/dev.db`, stop its dev server, checkpoint it, move that database and its manifest aside, then rerun setup. Never manipulate WAL/SHM files while a writer is running. Keep the live collector on 4318 separate.
+
+Verification: [worktree tests](../backend/tests/test_worktree_setup.py) cover actual setup in temporary Git worktrees, independent copies, reruns, skipped absent baselines, adding a baseline later, invalid baselines, and preserved local edits. [Seed tests](../backend/tests/test_seed_dev_data.py) cover full raw round-trips (including unknown records and line endings), checkpoint restoration without source files, partial-import failure, and overwrite refusal. All committed test data are synthetic.
 
 ## Configuration and boundaries
 
@@ -83,19 +113,16 @@ This config isolates endpoints and data; it does not freeze another process's Py
 
 Verification: [dev configuration tests](../backend/tests/test_dev_config.py) cover default endpoint compatibility, config precedence, CLI port selection, rejected live uploads, explicit imports, snapshot WAL consistency and refusal to overwrite existing data.
 
-## Optional real Responses endpoint test
+## Private model tests
 
-The normal suite uses fixtures, mocks, a dummy model, and a fake Codex app-server. To verify the complete model-request-to-telemetry path, [the opt-in test](../backend/tests/test_codex_endpoint_e2e.py) launches an ephemeral Codex process with a custom Responses API provider and points its log and trace exporters at a temporary AgentBoard receiver. Start from the repository's [`example.env`](../example.env); `.env` is ignored by Git.
+Implemented 2026-09-07. Every live Codex/model test uses **`http://192.168.1.220:30000/v1`**. The normal suite uses fixtures, mocks, a dummy model, and a fake Codex app-server. Run live checks explicitly:
 
 ```sh
-cp example.env .env
-# Edit .env before continuing.
-set -a
-. ./.env
-set +a
-uv run --extra dev pytest -m e2e backend/tests/test_codex_endpoint_e2e.py -q
+uv run --extra dev pytest --run-private-e2e -m e2e -q
 ```
 
-`AGENTBOARD_E2E_CODEX_API_KEY` is optional. When present, Codex reads it from the child process environment and sends it as the provider credential; the test never includes the value in command arguments. The endpoint must support Codex's streaming Responses API wire format. The test disables request and stream retries, requests one short response, and asserts a successful final message plus ingested `otlp_log`, `otlp_trace`, and normalized `llm` events.
+This runs the [Codex telemetry test](../backend/tests/test_codex_endpoint_e2e.py) and [synthetic classification tests](../backend/tests/test_classification_endpoint_e2e.py). The [shared policy](../scripts/private_endpoint.py) rejects any different base URL before a model request or Codex process. Discovery requests only the private `/models`, disables proxies/redirects, and auto-selects only if exactly one model is advertised. Pin a model with `AGENTBOARD_E2E_CODEX_MODEL` or `AGENTBOARD_E2E_CLASSIFICATION_MODEL` when needed. The matching `*_API_KEY` is optional; credentials remain in the child environment, never process arguments. [`example.env`](../example.env) lists these settings. Exporting endpoint/model/key settings also opts that suite into live testing; leave them unset for the normal offline suite.
 
-The test skips when both required variables are absent and fails clearly when only one is set. It gives the child process a temporary Codex home, ignores user configuration and execution-policy rules, prevents shell tools from inheriting its environment, and runs read-only without approvals. It therefore cannot use stored OpenAI OAuth state and uses neither the development service on port 4319 nor the normal collector/database on port 4318. The operator owns availability, data handling, and cost for the configured endpoint.
+The endpoint must support streaming Responses for Codex and the Responses structured output used by classification. The Codex test requests one short synthetic response, disables retries, and checks the final message plus ingested `otlp_log`, `otlp_trace`, and normalized `llm` events. Its temporary Codex home ignores user configuration, OAuth state and execution-policy rules; tools inherit no environment and execution is read-only without approvals. It uses a temporary receiver/database, not ports 4318/4319 or the shared real sessions. The tests clear inherited proxy and hosted OpenAI environment settings. The child inherits only runtime essentials and the optional private-provider key, excluding desktop app pipes/session IDs. It pins `RUST_LOG=info` for consistent log filtering; the parent configuration is unchanged. Child stdout/stderr diagnostics stay in the temporary test directory.
+
+If the private service is unreachable, incompatible, or ambiguous, report the failure and fix that configuration. Never substitute a hosted/paid provider or an existing logged-in Codex session. In particular, `agentboard resume --execute` uses normal user Codex configuration and is not a suitable live test command; extend the isolated private harness for future native-resume coverage. The dev dashboard remains in dummy mode. [Policy tests](../backend/tests/test_private_endpoint.py) verify provider rejection and model-discovery behavior offline; they do not establish live service availability.

@@ -18,7 +18,7 @@ def snapshot_database(source, destination):
     if manifest.exists():
         raise ValueError("Snapshot manifest already exists; choose a new destination")
     try:
-        destination.touch(exist_ok=False)
+        destination.touch(mode=0o600, exist_ok=False)
     except FileExistsError as exc:
         raise ValueError("Snapshot destination already exists; choose a new destination") from exc
     try:
@@ -28,7 +28,7 @@ def snapshot_database(source, destination):
             try:
                 src.backup(dst)
                 counts = {table: dst.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
-                          for table in ("sessions", "events", "raw_imports")}
+                          for table in ("sessions", "events", "raw_imports", "raw_lines")}
             finally:
                 dst.close()
         finally:

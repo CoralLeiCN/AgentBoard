@@ -7,13 +7,13 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from urllib.parse import urlsplit
 
 import pytest
 import uvicorn
 
 from agentboard.api import create_app
 from agentboard.config import Settings
+from scripts.private_endpoint import PRIVATE_BASE_URL, validate_base_url
 
 BASE_URL_ENV = "AGENTBOARD_E2E_CODEX_BASE_URL"
 MODEL_ENV = "AGENTBOARD_E2E_CODEX_MODEL"
@@ -26,7 +26,19 @@ def _config(key, value):
     return ["-c", f"{key}={json.dumps(value)}"]
 
 
+def codex_environment(codex_home):
+    # Keep runtime essentials, not desktop app pipes, session IDs, provider auth, or proxy settings.
+    environment = {name: os.environ[name] for name in (
+        "PATH", "HOME", "TMPDIR", "TEMP", "TMP", "LANG", "LC_ALL", "SYSTEMROOT", API_KEY_ENV
+    ) if name in os.environ}
+    environment["CODEX_HOME"] = str(codex_home)
+    # The desktop parent may use RUST_LOG=warn, suppressing Codex's INFO OTel events.
+    environment["RUST_LOG"] = "info"
+    return environment
+
+
 def codex_command(executable, base_url, model, receiver_url, output_path, api_key_configured):
+    base_url = validate_base_url(base_url)
     command = [
         executable,
         "exec",
@@ -71,7 +83,7 @@ def codex_command(executable, base_url, model, receiver_url, output_path, api_ke
 def test_codex_e2e_command_uses_responses_provider_without_exposing_key(tmp_path):
     command = codex_command(
         "codex",
-        "https://example.test/v1/",
+        PRIVATE_BASE_URL + "/",
         "test-model",
         "http://127.0.0.1:43210",
         tmp_path / "last-message.txt",
@@ -80,7 +92,7 @@ def test_codex_e2e_command_uses_responses_provider_without_exposing_key(tmp_path
     joined = " ".join(command)
     assert 'model_provider="agentboard_e2e"' in joined
     assert 'wire_api="responses"' in joined
-    assert 'base_url="https://example.test/v1"' in joined
+    assert f'base_url="{PRIVATE_BASE_URL}"' in joined
     assert f'env_key="{API_KEY_ENV}"' in joined
     assert "requires_openai_auth=false" in joined
     assert 'shell_environment_policy.inherit="none"' in joined
@@ -93,27 +105,31 @@ def test_example_env_documents_codex_endpoint_settings():
         for line in EXAMPLE_ENV.read_text().splitlines()
         if line and not line.startswith("#")
     )
-    assert set(values) == {BASE_URL_ENV, MODEL_ENV, API_KEY_ENV}
-    assert values[BASE_URL_ENV] and values[MODEL_ENV]
+    assert {BASE_URL_ENV, MODEL_ENV, API_KEY_ENV} <= set(values)
+    assert values[BASE_URL_ENV] == PRIVATE_BASE_URL
+    assert values[MODEL_ENV] == ""
     assert values[API_KEY_ENV] == ""
 
 
+def test_codex_child_enables_telemetry_without_changing_parent(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUST_LOG", "warn")
+    monkeypatch.setenv("CODEX_APP_TOOLS_PIPE_PATH", "/parent-app-pipe")
+    monkeypatch.setenv("OPENAI_API_KEY", "synthetic-parent-key")
+    child = codex_environment(tmp_path / "isolated-codex")
+    assert child["RUST_LOG"] == "info"
+    assert child["CODEX_HOME"] == str(tmp_path / "isolated-codex")
+    assert os.environ["RUST_LOG"] == "warn"
+    assert "CODEX_APP_TOOLS_PIPE_PATH" not in child
+    assert "OPENAI_API_KEY" not in child
+
+
 @pytest.fixture
-def codex_endpoint():
-    base_url = os.getenv(BASE_URL_ENV, "").strip()
-    model = os.getenv(MODEL_ENV, "").strip()
-    if not base_url and not model:
-        pytest.skip(f"set {BASE_URL_ENV} and {MODEL_ENV} to run the real endpoint test")
-    missing = [name for name, value in ((BASE_URL_ENV, base_url), (MODEL_ENV, model)) if not value]
-    if missing:
-        pytest.fail(f"real endpoint test is partially configured; missing {', '.join(missing)}")
-    parsed = urlsplit(base_url)
-    if parsed.scheme not in ("http", "https") or not parsed.netloc:
-        pytest.fail(f"{BASE_URL_ENV} must be an absolute HTTP(S) URL")
+def codex_endpoint(private_endpoint):
+    endpoint = private_endpoint("AGENTBOARD_E2E_CODEX")
     executable = shutil.which("codex")
     if not executable:
         pytest.fail("real endpoint test requires the codex executable on PATH")
-    return executable, base_url, model
+    return executable, endpoint.base_url, endpoint.model
 
 
 @pytest.fixture
@@ -181,17 +197,18 @@ def test_real_responses_endpoint_produces_codex_telemetry(
     )
     codex_home = tmp_path / "codex-home"
     codex_home.mkdir()
-    child_environment = os.environ.copy()
-    child_environment["CODEX_HOME"] = str(codex_home)
     completed = subprocess.run(
         command,
         cwd=tmp_path,
-        env=child_environment,
+        env=codex_environment(codex_home),
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
         timeout=120,
     )
+    # Retain diagnostics locally even when model generation succeeds but telemetry is missing.
+    (tmp_path / "codex.stdout.log").write_text(completed.stdout)
+    (tmp_path / "codex.stderr.log").write_text(completed.stderr)
     assert completed.returncode == 0, (
         f"codex failed with exit {completed.returncode}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
     )

@@ -8,6 +8,7 @@ import re
 from google.protobuf.json_format import MessageToDict, ParseDict
 from opentelemetry.proto.collector.logs.v1.logs_service_pb2 import ExportLogsServiceRequest
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
+from opentelemetry.proto.logs.v1.logs_pb2 import SeverityNumber
 
 from .domain import Event, Session, is_user_input_tool, stable_id
 from .timestamps import format_timestamp
@@ -116,8 +117,13 @@ def normalize(data, signal):
                 if ts <= 0:
                     raise ValueError("OTLP record needs a positive timestamp")
                 body = any_value(record.get("body", {}))
+                # Rust tracing may set eventName to a source location. Codex's semantic
+                # event.name must drive log classification; retain both in raw evidence.
+                codex_name = attrs.get("event.name", "") if signal == "logs" else ""
+                codex_name = codex_name if str(codex_name).startswith("codex.") else ""
                 name = (
                     record.get("name")
+                    or codex_name
                     or record.get("eventName")
                     or attrs.get("event.name")
                     or (body if isinstance(body, str) else "Log event")
@@ -165,12 +171,18 @@ def normalize(data, signal):
                     "resource": resource.get("resource", {}),
                     "scope": scope.get("scope", {}),
                 }
+                # MessageToDict emits enum names for known protobuf severities.
+                # Resolve them for comparison without altering the retained decoded record.
+                severity = record.get("severityNumber", 0)
+                severity = (SeverityNumber.Value(severity)
+                            if isinstance(severity, str) and severity.startswith("SEVERITY_NUMBER_")
+                            else int(severity))
                 status = (
                     "error"
                     if (
                         record.get("status", {}).get("code") in (2, "STATUS_CODE_ERROR")
                         or str(attrs.get("success", True)).lower() == "false"
-                        or int(record.get("severityNumber", 0)) >= 17
+                        or severity >= 17
                     )
                     else "ok"
                 )
