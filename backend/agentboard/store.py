@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from .domain import RawLine, RawTraceEnd, Session
+from .lineage import expanded, leaves, resolve, same_value, spec
 from .otlp import session_identity
 from .parallel import NOTE as PARALLEL_NOTE
 from .parallel import parallel_groups
@@ -54,8 +55,18 @@ CREATE TABLE IF NOT EXISTS event_raw_sources (
  import_id INTEGER NOT NULL REFERENCES raw_imports(id) ON DELETE CASCADE,
  line_numbers TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS event_field_sources (
+ event_row_id INTEGER NOT NULL REFERENCES events(row_id) ON DELETE CASCADE,
+ field TEXT NOT NULL, import_id INTEGER NOT NULL REFERENCES raw_imports(id) ON DELETE CASCADE,
+ description TEXT NOT NULL, PRIMARY KEY(event_row_id, field)
+);
+CREATE TABLE IF NOT EXISTS session_field_sources (
+ session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+ field TEXT NOT NULL, import_id INTEGER NOT NULL REFERENCES raw_imports(id) ON DELETE CASCADE,
+ description TEXT NOT NULL, PRIMARY KEY(session_id, field)
+);
 CREATE INDEX IF NOT EXISTS sessions_identity ON sessions(identity_kind,started_at DESC,id);
-PRAGMA user_version = 6;
+PRAGMA user_version = 7;
 """
 
 
@@ -83,7 +94,7 @@ class Store:
             # Do not use executescript: it commits before running, breaking atomic migration.
             db.execute("BEGIN IMMEDIATE")
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, 3, 4, 5, 6):
+            if version not in (0, 1, 2, 3, 4, 5, 6, 7):
                 raise ValueError("Unsupported database schema version")
             if version == 1:
                 self._migrate_timestamps(db)
@@ -160,6 +171,8 @@ class Store:
                     if previous:
                         db.execute("UPDATE event_raw_sources SET import_id=? WHERE import_id=?",
                                    (previous["id"], raw_id))
+                        for table in ("event_field_sources", "session_field_sources"):
+                            db.execute(f"UPDATE {table} SET import_id=? WHERE import_id=?", (previous["id"], raw_id))
                         db.execute("DELETE FROM raw_imports WHERE id=?", (raw_id,))
                         raw_import_ids.append(previous["id"])
                     else:
@@ -192,6 +205,9 @@ class Store:
                         metadata=json_patch(sessions.metadata,excluded.metadata)""",
                         (item.id, item.agent, item.title, item.started_at, json.dumps(item.metadata), item.identity_kind),
                     )
+                    if raw_id is not None:
+                        stored = self.session_row(db.execute("SELECT * FROM sessions WHERE id=?", (item.id,)).fetchone())
+                        self._save_field_sources(db, "session", item.id, stored, item, raw_id)
                 else:
                     d = item.model_dump()
                     if item.source == "otlp_trace" and "otel" in item.attributes:
@@ -236,17 +252,18 @@ class Store:
                             ),
                         ).rowcount > 0
                         updated = updated or completed
-                    if raw_id is not None and item.raw_line_numbers:
+                    if raw_id is not None:
                         stored = self.event_row(db.execute(
                             "SELECT * FROM events WHERE session_id=? AND id=?",
                             (item.session_id, item.id),
                         ).fetchone())
+                        self._save_field_sources(db, "event", stored["row_id"], stored, item, raw_id)
                         row_id = stored.pop("row_id")
                         if updated:
                             # A partial update may combine old content with new timing.
                             # Do not claim a single archive explains that hybrid event.
                             db.execute("DELETE FROM event_raw_sources WHERE event_row_id=?", (row_id,))
-                        if stored == item.model_dump():
+                        if item.raw_line_numbers and stored == item.model_dump():
                             db.execute(
                                 """INSERT INTO event_raw_sources VALUES(?,?,?)
                                 ON CONFLICT(event_row_id) DO NOTHING""",
@@ -268,6 +285,79 @@ class Store:
             "inserted_events": inserted,
             "raw_import_ids": raw_import_ids,
         }
+
+    @staticmethod
+    def _save_field_sources(db, owner, owner_id, stored, incoming, import_id):
+        """Keep matching old fields; bind changed/backfilled values independently to this snapshot."""
+        table = f"{owner}_field_sources"
+        column = "event_row_id" if owner == "event" else "session_id"
+        current = leaves(stored)
+        old = {row["field"]: json.loads(row["description"]) for row in db.execute(
+            f"SELECT field,description FROM {table} WHERE {column}=?", (owner_id,)
+        )}
+        descriptions = expanded(incoming.model_dump(), incoming.field_lineage)
+        for field, description in old.items():
+            if field not in current or not same_value(current[field], description["value"]):
+                db.execute(f"DELETE FROM {table} WHERE {column}=? AND field=?", (owner_id, field))
+            else:
+                descriptions.pop(field, None)
+        for field, description in descriptions.items():
+            if field in current and same_value(current[field], description["value"]):
+                db.execute(f"INSERT INTO {table} VALUES(?,?,?,?)",
+                           (owner_id, field, import_id, json.dumps(description)))
+
+    def field_lineage(self, sid, event_id=None):
+        """Return every stored leaf, with verified evidence or an explicit unknown origin."""
+        with self.connect() as db:
+            db.execute("BEGIN")
+            if event_id is None:
+                value = self.session_row(db.execute("SELECT * FROM sessions WHERE id=?", (sid,)).fetchone())
+                table, column, owner_id = "session_field_sources", "session_id", sid
+            else:
+                row = db.execute("SELECT * FROM events WHERE session_id=? AND id=?", (sid, event_id)).fetchone()
+                if row is None:
+                    raise KeyError("Event not found")
+                value = self.event_row(row)
+                table, column, owner_id = "event_field_sources", "event_row_id", row["row_id"]
+            saved = {row["field"]: (row["import_id"], json.loads(row["description"])) for row in db.execute(
+                f"SELECT * FROM {table} WHERE {column}=?", (owner_id,)
+            )}
+            archives, records, parsed_records, fields = {}, {}, {}, {}
+            for field, child in leaves(value).items():
+                archive_id, description = saved.get(field, (None, None))
+                if description is None or not same_value(description["value"], child):
+                    description = {**spec("unknown", "No verified field mapping for this stored value. Reimport original Codex JSONL to backfill matching fields; other sources may have no archived evidence."), "value": child}
+                    archive_id = None
+                else:
+                    if archive_id not in archives:
+                        archives[archive_id] = dict(db.execute("SELECT * FROM raw_imports WHERE id=?", (archive_id,)).fetchone())
+                    for source in description["sources"]:
+                        key = (archive_id, source["line_number"])
+                        if key not in records:
+                            raw = db.execute("SELECT content FROM raw_lines WHERE import_id=? AND sequence=?", key).fetchone()
+                            if raw is None:
+                                raise ValueError("Field lineage references a missing archived line")
+                            text = raw["content"].decode("utf-8")
+                            records[key] = {"import_id": archive_id, "line_number": key[1], "text": text}
+                            parsed_records[key] = json.loads(text)
+                        source["import_id"] = archive_id
+                        present, raw_value = resolve(parsed_records[key], source["pointer"])
+                        source.update(present=present, value=raw_value)
+                fields[field] = {**description, "available": archive_id is not None, "import_id": archive_id}
+            if event_id is not None:
+                fields["/row_id"] = {**spec("calculated", "SQLite row ID assigned on insertion; pagination bookkeeping."),
+                                     "value": value["row_id"], "available": True, "import_id": None}
+                if value["end_time"] is not None:
+                    start, end = fields["/start_time"], fields["/end_time"]
+                    fields["/duration_ms"] = {
+                        **spec("calculated", "(end_time - start_time) in nanoseconds divided by 1,000,000; timing quality is unchanged.",
+                               *start["sources"], *end["sources"]),
+                        "value": (timestamp_ns(value["end_time"]) - timestamp_ns(value["start_time"])) / 1e6,
+                        "available": start["available"] and end["available"], "import_id": None,
+                        "inputs": ["/start_time", "/end_time"],
+                    }
+            return {"version": "field-lineage-v1", "session_id": sid, "event_id": event_id,
+                    "fields": fields, "archives": list(archives.values()), "records": list(records.values())}
 
     @staticmethod
     def _index_otlp_identity(db, event):

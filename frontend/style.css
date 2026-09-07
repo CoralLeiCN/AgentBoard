@@ -14,3 +14,6 @@
 .child-operation .event-name{padding-left:16px}
 
 #event-raw-view{min-width:0}#event-raw-lines section{margin-top:18px}.raw-line-label{font-size:11px;overflow-wrap:anywhere}#event-dialog #event-raw-lines pre{max-height:none;white-space:pre;overflow-x:auto}.event-view-toggle{flex-wrap:wrap}
+.field-source { margin-top: .65rem; font-weight: normal; }
+.field-source summary { cursor: pointer; overflow-wrap: anywhere; }
+.field-source pre { max-height: 24rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }

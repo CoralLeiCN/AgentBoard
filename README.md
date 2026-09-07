@@ -65,7 +65,7 @@ The database defaults to `./agentboard.db`. Select another file with `agentboard
 
 Historical gaps estimate activity; they do not establish exact full LLM latency.
 
-Click an event to inspect **Normalized**, **Calculated**, **Inferred**, or **Model-generated** values and their derivation. Source timestamps remain Normalized even when their use as LLM boundaries is Inferred. Missing values are Unavailable; unsupported mappings are Unknown. [Origin definitions](docs/data-lineage.md#62-origins-and-timing-quality-are-separate-axes) separate provenance from timing quality.
+Click an event to inspect **Normalized**, **Calculated**, **Inferred**, or **Model-generated** values and their derivation. Source timestamps remain Normalized even when their use as LLM boundaries is Inferred. Codex fields expand to exact archive lines and JSON paths, including propagated context and calculated boundaries. Null/empty values retain their known origin; missing evidence is Unknown. Reimport original rollouts to backfill older fields. See the [field-lineage API and limits](docs/data-lineage.md#36-per-field-codex-lineage). [Origin definitions](docs/data-lineage.md#62-origins-and-timing-quality-are-separate-axes) separate provenance from timing quality.
 
 The **Table / Normalized JSON** toggle remembers your choice across events/reloads in this browser. Preserved item/decoded OTel evidence appears separately. **Export raw trace** downloads the latest archived Codex rollout; normalized JSON remains a derived view. Older imports need reimporting to populate the archive. Explanations also work on existing imports.
 

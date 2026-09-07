@@ -1,8 +1,8 @@
 # Data lineage and transformation rules
 
-Reviewed against the working source on **2026-09-06**. Canonical storage schema: **v6**. API: **`/api/v1`**.
+Reviewed against the working source on **2026-09-07**. Canonical storage schema: **v7**. API: **`/api/v1`**.
 
-How AgentBoard obtains, transforms, stores, and presents data, including interpretation and information loss. This documents **current implementation**, not the upstream Codex format or universal release compatibility. New Codex archives record mapping version `codex-jsonl-v3`; earlier normalized rows have no persisted mapping version.
+How AgentBoard obtains, transforms, stores, and presents data, including interpretation and information loss. This documents **current implementation**, not the upstream Codex format or universal release compatibility. New Codex archives record mapping version `codex-jsonl-v4`; earlier normalized rows have no persisted mapping version.
 
 Related: [requirements](specification.md), [architecture](architecture.md), [current correctness gaps](data-quality-gaps.md), and [deferred capabilities](backlog.md).
 
@@ -48,7 +48,7 @@ flowchart TD
 | Domain and timestamp validation | [`domain.py`](../backend/agentboard/domain.py), [`timestamps.py`](../backend/agentboard/timestamps.py) | Common event kinds, timestamps, and interval validation. This is not complete validation of every upstream payload variant. |
 | Identity, merging, aggregation | [`store.py`](../backend/agentboard/store.py), `ingest`, `stats` | Archives complete accepted Codex JSONL versions; no cross-source semantic deduplication. |
 | Model operations | [`models.py`](../backend/agentboard/models.py) | Explicit optional operations; importing a trace never calls a model. |
-| Display and provenance | [`static/app.js`](../frontend/app.js), [`static/provenance.js`](../frontend/provenance.js) | Descriptions are computed from stored source/kind/attributes at display time. |
+| Display and provenance | [`static/app.js`](../frontend/app.js), [`static/provenance.js`](../frontend/provenance.js) | Codex field evidence is persisted by the backend and rendered by [`lineage.js`](../frontend/lineage.js); other-source descriptions remain display-time mappings. |
 
 ## 3. Raw Codex files
 
@@ -139,7 +139,7 @@ Measured item commands use a separate conversion: strings unchanged; all-string 
 
 Implemented **2026-09-06** in [adapter](../backend/agentboard/adapters/codex.py), [storage](../backend/agentboard/store.py), [API](../backend/agentboard/api.py), and [CLI](../backend/agentboard/cli.py). Accepted UTF-8 Codex JSONL imports retain every input line as UTF-8 bytes in `raw_lines`, keyed by archive ID and one-based physical `sequence`. This includes blank lines, original timestamp spelling, whitespace, line endings, absent final newline, unknown fields/types, system/developer messages, content parts, and encrypted content. The archive does not decrypt, execute, redact, or normalize these bytes. HTTP gzip input archives the decompressed JSONL, not its compressed transport envelope. Invalid imports roll back both archive and normalized changes.
 
-`raw_imports` records session ID, SHA-256 of concatenated source bytes, byte/line counts, archive creation time, and mapping version `codex-jsonl-v3`. Identical session/hash/mapping imports reuse an archive ID. Changed, appended, or shortened files create distinct archives and preserve prior versions. Latest means the most recently created distinct archive, not the longest file or most recent identical retry. Each distinct snapshot stores all its lines; storage grows with retained versions and has no automatic pruning.
+`raw_imports` records session ID, SHA-256 of concatenated source bytes, byte/line counts, archive creation time, and mapping version `codex-jsonl-v4`. Identical session/hash/mapping imports reuse an archive ID. Changed, appended, or shortened files create distinct archives and preserve prior versions. Latest means the most recently created distinct archive, not the longest file or most recent identical retry. Each distinct snapshot stores all its lines; storage grows with retained versions and has no automatic pruning.
 
 `GET /api/v1/sessions/{sid}/raw-imports` lists archive metadata. `/raw?import_id=ID` exports one exact version; omitting the ID selects the latest. The UI's **Export raw trace** uses that default. CLI equivalents are `agentboard export SESSION_ID --raw [--import-id ID]`. Existing `/export` and input exports remain normalized. Import responses include `raw_import_ids`. No available source returns an empty version list and a 404 raw export, never reconstructed evidence.
 
@@ -150,6 +150,36 @@ A message or completed item links to its source record; a completed tool links t
 Links are created only when the newly parsed normalized event equals the stored event. Identical retries retain links; conflicting or shortened snapshots do not redirect existing evidence to the latest archive. Completion updates replace links when the resulting event matches; hybrid events combining older content with changed timing lose their link rather than claim an incorrect source. Existing archives are not automatically reparsed during migration. Reimport original rollouts to backfill matching events; mismatched legacy events remain unavailable. OTLP and replay report that they have no Codex JSONL source. [Source-link tests](../backend/tests/test_event_raw.py) cover exclusion of inferred boundaries (including older links), actual LLM items, delayed prompts, version binding, completion, hybrid updates, legacy backfill, and unified items.
 
 Schema v3 adds the archive tables without reconstructing old evidence. Reimport original files to backfill older sessions and metadata. Archive retention covers successful Codex JSONL imports; OTLP still retains selected decoded evidence rather than complete wire bytes. Exact round-trip, changed/shortened retry, rollback, CLI newline preservation, and migration coverage: [synthetic tests](../backend/tests/test_raw_traces.py).
+
+### 3.6 Per-field Codex lineage
+
+Implemented **2026-09-07**, schema **v7**, mapping **`codex-jsonl-v4`**. [`lineage.py`](../backend/agentboard/lineage.py) follows the rollout parser’s state; [`store.py`](../backend/agentboard/store.py) persists field evidence separately from normalized data. Import-only annotations do not enter normalized exports. The mappings cover every leaf of imported Codex events and session fields, including nested attributes/metadata, nulls, empty containers, defaults, and generated values.
+
+| API | Result |
+| --- | --- |
+| `GET /api/v1/sessions/{sid}/events/{event_id}/lineage` | Stored event fields and calculated `duration_ms` when closed. |
+| `GET /api/v1/sessions/{sid}/lineage` | Stored session fields, including merged metadata; classification has no import lineage. |
+
+Responses identify `version=field-lineage-v1`. `fields` uses JSON Pointer keys (for example `/attributes/item/duration/secs`; literal `~` and `/` in keys escape to `~0` and `~1`). Each entry includes its stored `value`, `origin`, transformation `method`, `available`, `import_id`, and `sources`. Each source identifies an archive ID, one-based physical line, JSON Pointer, role, whether the raw key was `present`, and its decoded value. `archives` supplies hashes and mapping versions; `records` supplies deduplicated exact line text. Pointers may select a whole container when a transformation consumes it, such as joining content parts. An empty pointer selects the record; `physical_line` means the line position itself is an input.
+
+`available` means the field has a verified mapping, including an explicit application default; it does not mean the raw field exists or the interpretation is certain. Null and empty values retain their mapping. An absent key has `present=false`; a present JSON null has `present=true, value=null`. Application constants have no raw input. SQLite `row_id` is Calculated bookkeeping, and duration lists its start/end field inputs. Unmapped legacy values are Unknown with `available=false`; source-derived values are never reconstructed from the latest archive alone.
+
+| Case | Evidence retained |
+| --- | --- |
+| Session/turn/previous-turn IDs | Actual metadata, context, task-start, or preceding completion line; initial null defaults are explicit. |
+| Session title/model/metadata | Prompt transformation, selected model update, and leaf-level metadata sources after SQLite merge rules. |
+| Call ID/name/text | Actual selected payload key; line-generated call IDs are Calculated, absent names are Inferred, explicit names are Normalized. |
+| Completed tool | Call arguments and start; paired result output, status rule, reported wall-time conversion, and both inputs to `max(result timestamp, call start)`. |
+| Inferred LLM/wait interval | Both selected timestamp boundaries, including suppressed prompt mirrors and completion markers. These appear in field evidence while Raw JSONL still excludes calculation-only records. |
+| Measured item | Envelope millisecond timestamps, reported duration components, explicit/propagated turn ID, command conversion, status inputs, and every retained item leaf. |
+
+**Synthetic example:** a call on line 2 is imported in archive A with text `original`. Archive B changes that text and supplies a result on line 3. Existing merge rules retain `original` but complete the tool: `/text` stays bound to A, while `/end_time` and `/attributes/output` bind to B. Duration can therefore use sources from multiple archives. An unchanged retry or shorter snapshot does not redirect these fields. A session metadata update similarly preserves old leaf sources, replaces changed ones, and removes evidence for deleted keys. Lineage describes the stored result; it does not correct existing normalization rules.
+
+The Table inspector consumes this API and expands each field’s raw sources with archive/hash/path labels. Raw record text enters the DOM only when its source section is expanded and is removed on collapse, avoiding duplication across collapsed fields. Unified rows select rollout text evidence when rollout text is nonempty, otherwise item text evidence; all other fields retain item provenance. Source contents are rendered as text. The independent Raw JSONL and Normalized JSON views retain their meanings.
+
+**Existing data and limits:** migration creates empty evidence tables and does not reparse archives. Reimport original Codex files to backfill matching fields, including partial matches in hybrid events; mismatched fields remain Unknown. Stored evidence is checked against the current value before exposure. This contract does not yet trace OTLP, replay, plugin outputs, classification/model runs, or aggregate statistics to their inputs; their lineage responses explicitly report unavailable mappings. Existing non-Codex inspector explanations and preserved decoded telemetry remain available. Original OTLP wire bytes are still not archived. No producer-format compatibility or human-authorship claim is added.
+
+Verification: [backend regression cases](../backend/tests/test_field_lineage.py) cover leaf coverage, context, mirrors, both boundaries, fallback/explicit fields, nulls, escaped nested keys, item duration, hybrid completion, session merges, retry binding, migration/backfill, isolation and rollback. [Renderer tests](../frontend/tests/lineage.test.cjs) cover escaped exact text, unavailable keys, unified text selection, and stale responses.
 
 ## 4. Historical interval state machine
 
@@ -301,7 +331,7 @@ Imported assistant text is Normalized: this axis describes how **AgentBoard** ob
 
 `timing=measured` means the mapping used explicit item/span timing or a reported duration/local replay clock. `estimated` means rollout-gap or call/result pairing. `unknown` means no supported closed timing method. These are method classifications, not probability scores. The `timing` field's own origin is Inferred because AgentBoard assigns that label.
 
-The JavaScript inspector derives origins from source, kind, attributes, and retained evidence. The backend neither persists nor returns a complete field-origin/method-version/source-pointer map. UI changes can relabel old events without reimport. Ambiguous fallback names and old zero-length tool intervals may be Unknown.
+Codex field origins, methods, and pointers follow the persisted [field contract](#36-per-field-codex-lineage). Other-source inspector descriptions still derive from source, kind, attributes, and retained evidence; these are not verified archive links. Unknown remains explicit when field evidence is unavailable.
 
 ### 6.3 Event and attribute dictionary
 
@@ -485,7 +515,7 @@ Run from the repository root:
 
 ```sh
 uv run --extra dev pytest -q
-node --test frontend/tests/provenance.test.cjs
+node --test frontend/tests/*.test.cjs
 uv run --extra dev ruff check backend examples
 ```
 

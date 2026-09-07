@@ -2,7 +2,7 @@ const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const state = {listKind:'session',offset:0, next:null, sid:null, session:null, stats:null, tab:'timeline', events:[], parallelGroups:[], parallelByEvent:new Map(), parallelNote:'', cursor:null, request:0, listRequest:0, features:[]};
 let noticeTimer, searchTimer;
-let eventView='table', eventRawRequest=0;
+let eventView='table', eventRawRequest=0, eventLineageRequest=0;
 try { const saved=localStorage.getItem('agentboard-event-view');if(['json','raw'].includes(saved))eventView=saved; } catch { /* Storage may be disabled. */ }
 function notice(text, error=false) { $('#notice').textContent=text; $('#notice').hidden=false; $('#notice').className=error?'error':''; clearTimeout(noticeTimer); noticeTimer=setTimeout(()=>$('#notice').hidden=true, error?12000:5000); }
 async function api(path, options={}) {
@@ -121,6 +121,24 @@ async function loadEventRaw(event) {
     if(request===eventRawRequest)$('#event-raw-status').textContent=`Unable to load source lines: ${error.message}`;
   }
 }
+async function loadEventLineage(event) {
+  const request=++eventLineageRequest;
+  if(!['codex_jsonl','codex_item'].includes(event.source))return;
+  $('#event-source-note').textContent='Loading verified field lineage…';
+  try {
+    const ids=event.unified?.source_event_ids||[event.id];
+    const results=await Promise.all(ids.map(id=>json(`/api/v1/sessions/${encodeURIComponent(event.session_id)}/events/${encodeURIComponent(id)}/lineage`)));
+    if(request!==eventLineageRequest)return;
+    $('#event-fields').innerHTML=lineageTable(event,results,esc);
+    bindLineageSources($('#event-fields'),results);
+    $('#event-source-note').textContent='Expand a source beneath a field to inspect its exact archived record and JSON path. Context and calculation boundaries appear here; Raw JSONL shows actual event records. Unknown means no verified mapping is available.';
+  } catch(error) {
+    if(request===eventLineageRequest) {
+      $('#event-fields').replaceChildren();
+      $('#event-source-note').textContent=`Unable to load field lineage: ${error.message}`;
+    }
+  }
+}
 function inspectEvent(event) {
   const description=describeEvent(event);
   const labels={normalized:'Normalized',calculated:'Calculated',inferred:'Inferred',model_generated:'Model-generated',unavailable:'Unavailable',unknown:'Unknown'};
@@ -135,7 +153,8 @@ function inspectEvent(event) {
   $('#event-summary').textContent=description.summary;
   $('#event-basis').textContent=event.attributes?.basis?`Method: ${event.attributes.basis}`:'';
   $('#event-basis').hidden=!event.attributes?.basis;
-  $('#event-fields').innerHTML=description.fields.map(f=>`<tr><th scope="row"><code>${esc(f.field)}</code>${valueHTML(f.value)}</th><td><span class="origin ${f.origin}">${labels[f.origin]}</span></td><td>${esc(f.explanation)}</td></tr>`).join('');
+  $('#event-fields').innerHTML='<tr><td colspan="3">Loading field lineage…</td></tr>';
+  if(!['codex_jsonl','codex_item'].includes(event.source))$('#event-fields').innerHTML=description.fields.map(f=>`<tr><th scope="row"><code>${esc(f.field)}</code>${valueHTML(f.value)}</th><td><span class="origin ${f.origin}">${labels[f.origin]}</span></td><td>${esc(f.explanation)}</td></tr>`).join('');
   $('#event-evidence').hidden=!description.evidence;
   $('#event-evidence').open=false;
   $('#event-evidence-title').textContent=description.evidence?.label||'Preserved source data';
@@ -143,6 +162,7 @@ function inspectEvent(event) {
   $('#event-source-note').textContent=description.evidence?'The preserved source data below is separate from AgentBoard’s normalized event.':'Field origins describe AgentBoard’s normalization. Open Raw JSONL for verified source lines when available.';
   $('#event-json').textContent=JSON.stringify(event,null,2);
   loadEventRaw(event);
+  loadEventLineage(event);
   setEventView(eventView);
   $('#event-dialog').showModal();
   $('#event-dialog').scrollTop=0;
