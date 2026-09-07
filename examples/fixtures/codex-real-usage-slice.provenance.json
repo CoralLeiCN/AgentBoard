@@ -1,0 +1,218 @@
+{
+  "kind": "redacted_real_usage_slice",
+  "source": "Opening two turns of the local AgentBoard backlog discussion",
+  "source_cli_version": "0.153.4",
+  "source_date": "2026-09-07",
+  "sha256": "185630d0da7f5814cbbbd50a1e70802497e0293c3d28cd393f4d80aec392df83",
+  "record_count": 17,
+  "source_prefix_line_count": 55,
+  "preserved": [
+    "Original usage counters, model names, timestamps, ordinals and retained record order",
+    "Equality of response and turn identities",
+    "Two reviewed user questions about the AgentBoard backlog"
+  ],
+  "changes": [
+    "Usage-related record selection from a fixed source prefix; not a complete rollout",
+    "Session, turn and response identifiers pseudonymized consistently",
+    "Only listed payload fields retained; prompts other than the two reviewed questions, assistant/tool content, local paths, instructions, quota/credit data and configuration omitted",
+    "agentboard_fixture labeling added; JSON reserialized"
+  ],
+  "lines": [
+    {
+      "excerpt_line": 1,
+      "original_line": 1,
+      "original_ordinal": 0,
+      "retained_payload_fields": [
+        "cli_version",
+        "model_provider",
+        "source",
+        "originator",
+        "id",
+        "session_id",
+        "agentboard_fixture"
+      ]
+    },
+    {
+      "excerpt_line": 2,
+      "original_line": 8,
+      "original_ordinal": 7,
+      "retained_payload_fields": [
+        "model",
+        "turn_id"
+      ]
+    },
+    {
+      "excerpt_line": 3,
+      "original_line": 9,
+      "original_ordinal": 8,
+      "retained_payload_fields": [
+        "type",
+        "role",
+        "content"
+      ]
+    },
+    {
+      "excerpt_line": 4,
+      "original_line": 14,
+      "original_ordinal": 13,
+      "retained_payload_fields": [
+        "usage",
+        "turn_token_usage",
+        "thread_token_usage",
+        "thread_id",
+        "session_id",
+        "turn_id",
+        "root_turn_id",
+        "response_id"
+      ]
+    },
+    {
+      "excerpt_line": 5,
+      "original_line": 17,
+      "original_ordinal": 16,
+      "retained_payload_fields": [
+        "type",
+        "info"
+      ]
+    },
+    {
+      "excerpt_line": 6,
+      "original_line": 19,
+      "original_ordinal": 18,
+      "retained_payload_fields": [
+        "usage",
+        "turn_token_usage",
+        "thread_token_usage",
+        "thread_id",
+        "session_id",
+        "turn_id",
+        "root_turn_id",
+        "response_id"
+      ]
+    },
+    {
+      "excerpt_line": 7,
+      "original_line": 24,
+      "original_ordinal": 23,
+      "retained_payload_fields": [
+        "type",
+        "info"
+      ]
+    },
+    {
+      "excerpt_line": 8,
+      "original_line": 28,
+      "original_ordinal": 27,
+      "retained_payload_fields": [
+        "usage",
+        "turn_token_usage",
+        "thread_token_usage",
+        "thread_id",
+        "session_id",
+        "turn_id",
+        "root_turn_id",
+        "response_id"
+      ]
+    },
+    {
+      "excerpt_line": 9,
+      "original_line": 31,
+      "original_ordinal": 30,
+      "retained_payload_fields": [
+        "type",
+        "info"
+      ]
+    },
+    {
+      "excerpt_line": 10,
+      "original_line": 33,
+      "original_ordinal": 32,
+      "retained_payload_fields": [
+        "usage",
+        "turn_token_usage",
+        "thread_token_usage",
+        "thread_id",
+        "session_id",
+        "turn_id",
+        "root_turn_id",
+        "response_id"
+      ]
+    },
+    {
+      "excerpt_line": 11,
+      "original_line": 36,
+      "original_ordinal": 35,
+      "retained_payload_fields": [
+        "type",
+        "info"
+      ]
+    },
+    {
+      "excerpt_line": 12,
+      "original_line": 39,
+      "original_ordinal": 38,
+      "retained_payload_fields": [
+        "usage",
+        "turn_token_usage",
+        "thread_token_usage",
+        "thread_id",
+        "session_id",
+        "turn_id",
+        "root_turn_id",
+        "response_id"
+      ]
+    },
+    {
+      "excerpt_line": 13,
+      "original_line": 40,
+      "original_ordinal": 39,
+      "retained_payload_fields": [
+        "type",
+        "info"
+      ]
+    },
+    {
+      "excerpt_line": 14,
+      "original_line": 44,
+      "original_ordinal": 43,
+      "retained_payload_fields": [
+        "model",
+        "turn_id"
+      ]
+    },
+    {
+      "excerpt_line": 15,
+      "original_line": 45,
+      "original_ordinal": 44,
+      "retained_payload_fields": [
+        "type",
+        "role",
+        "content"
+      ]
+    },
+    {
+      "excerpt_line": 16,
+      "original_line": 51,
+      "original_ordinal": 50,
+      "retained_payload_fields": [
+        "usage",
+        "turn_token_usage",
+        "thread_token_usage",
+        "thread_id",
+        "session_id",
+        "turn_id",
+        "root_turn_id",
+        "response_id"
+      ]
+    },
+    {
+      "excerpt_line": 17,
+      "original_line": 52,
+      "original_ordinal": 51,
+      "retained_payload_fields": [
+        "type",
+        "info"
+      ]
+    }
+  ]
+}

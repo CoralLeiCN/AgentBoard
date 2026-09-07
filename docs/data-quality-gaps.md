@@ -32,6 +32,8 @@ Evidence labels:
 
 Gaps compound: model comparisons may combine missing intervals (DQ-04), last-seen model attribution (DQ-10), and changing data (DQ-08).
 
+**2026-09-07:** the separate [token usage report](data-lineage.md#71-token-usage-and-api-value) reads an immutable raw archive, supports `token_usage_record` and legacy cumulative counters, and attributes usage from chronological model evidence. This narrows DQ-03/DQ-08/DQ-10 for that report only; normalized-event coverage, general stats consistency and classification history remain open. Missing token/model evidence and unsupported prices remain explicit.
+
 ## Analysis practice while gaps remain
 
 Preserve original files and analyze a fixed database copy. Record code revision/source snapshot, input hashes, session/source selection, import outcomes, timing groups, and exclusions. AgentBoard does not generate this manifest; record it manually.

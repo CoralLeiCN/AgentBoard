@@ -33,6 +33,7 @@ Core requirements:
 | UI-01 | Browse, search, filter, and inspect sessions and their events. | Implemented |
 | TIME-01 | Separate elapsed, LLM, tool, and waiting-for-user time. | Implemented, with inference limitations |
 | TIME-02 | Explicitly label parallel tool groups from recorded overlap. | Implemented; inferred membership (§6.2) |
+| USAGE-01 | Track recorded token usage and estimate its Standard API value in USD. | Implemented for archived Codex rollouts; evidence and pricing limits in [lineage §7.1](data-lineage.md#71-token-usage-and-api-value) |
 | INPUT-01 | Extract prompts and distinguish their actual origin. | Extraction implemented; origin distinction is a discussed follow-up |
 | PROV-01 | Distinguish normalized, calculated, inferred, and model-generated field values. | Implemented |
 | VIEW-01 | Switch between table and normalized JSON, remembering the last view. | Implemented |

@@ -1,6 +1,8 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AgentBoard · Trace explorer</title><link rel="stylesheet" href="/static/style.css?v=unified-timeline-v1"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AgentBoard · Trace explorer</title>
+<script>if(location.protocol==='file:')location.replace('http://localhost:4319/'+location.hash);</script>
+<link rel="stylesheet" href="/static/style.css?v=token-usage-v3"></head>
 <body>
 <aside class="sidebar">
   <a class="brand" href="/"><span class="brand-icon">▥</span> AgentBoard <span class="version">α</span></a>
@@ -27,6 +29,11 @@
     <p id="detail-identity-note" class="timing-note" hidden></p><div id="classification" class="classification" hidden></div>
     <div class="metrics"><div><span class="small-label" id="elapsed-label">SESSION ELAPSED</span><strong id="elapsed">—</strong><small id="elapsed-note">Includes gaps between turns</small></div><div><span class="small-label"><i class="dot llm"></i> LLM TIME</span><strong id="llm-time">—</strong><small id="llm-quality"></small></div><div><span class="small-label"><i class="dot tool"></i> TOOL TIME</span><strong id="tool-time">—</strong><small id="tool-quality"></small></div><div><span class="small-label"><i class="dot user_wait"></i> WAITING FOR USER</span><strong id="user_wait-time">—</strong><small id="user_wait-quality"></small></div><div><span class="small-label">USER INPUTS</span><strong id="input-count">0</strong><small>Prompts in this source</small></div></div>
     <div class="timing-note" id="timing-note"></div>
+    <section class="panel usage-panel" aria-labelledby="usage-title">
+      <div class="toolbar"><h2 id="usage-title">Token usage &amp; API value</h2><div class="filters"><label for="usage-model">Price as</label><select id="usage-model"><option value="">Recorded models</option></select><button id="usage-refresh" class="icon-button" aria-label="Refresh token usage">↻</button><button id="usage-export" class="button small" disabled>↓ Export usage JSON</button></div></div>
+      <div id="usage-content" aria-live="polite"><p class="usage-empty">Loading token usage…</p></div>
+      <div class="usage-pagination" hidden id="usage-pagination"><button id="usage-more" class="button small">Load more usage ↓</button></div>
+    </section>
     <div class="panel"><div class="toolbar"><div class="tabs"><button class="tab active" data-tab="timeline">Timeline</button><button class="tab" data-tab="inputs">User inputs</button><button class="tab" data-tab="events">All events</button></div><div class="filters"><select id="source" aria-label="Telemetry source"><option value="unified">Unified timeline</option><option value="codex_jsonl">Historical rollout</option><option value="codex_item">Codex item timings</option><option value="otlp_trace">OTel traces</option><option value="otlp_log">OTel logs</option><option value="replay">Model replay</option></select><input id="event-search" type="search" placeholder="Filter events…" aria-label="Filter events"></div></div>
     <div id="parallel-summary" class="parallel-summary" hidden></div><div id="event-list"></div><div class="table-footer"><span id="event-info"></span><button id="more" class="button small" hidden>Load more ↓</button></div></div>
   </section>
@@ -46,5 +53,5 @@
 </dialog>
 <dialog id="branch-dialog"><div class="dialog-heading"><div><div class="eyebrow">EXPLORE ANOTHER DIRECTION</div><h2>Branch from this input</h2></div><button class="icon-button close" aria-label="Close dialog">×</button></div><p>Keep the preceding conversation and replace this prompt. Your original session stays intact.</p><label for="replacement">Replacement input</label><textarea id="replacement" rows="6"></textarea><p class="muted">Model replay continues the transcript with the configured model. Native Codex branching produces a plan to run locally. Neither restores earlier files.</p><div class="actions"><button id="native-plan" class="button">Get Codex plan</button><button id="replay" class="button primary">Run model replay →</button></div></dialog>
 <dialog id="token-dialog"><div class="dialog-heading"><h2>API connection</h2><button class="icon-button close" aria-label="Close dialog">×</button></div><p>If you configured a server token, enter it here. It stays in this tab’s session storage.</p><label for="api-token">Bearer token</label><input type="password" id="api-token" autocomplete="off"><button id="save-token" class="button primary">Connect</button></dialog>
-<script src="/static/provenance.js?v=field-lineage-v2" defer></script><script src="/static/lineage.js?v=field-lineage-v2" defer></script><script src="/static/app.js?v=field-lineage-v2" defer></script>
+<script src="/static/provenance.js?v=field-lineage-v2" defer></script><script src="/static/lineage.js?v=field-lineage-v2" defer></script><script src="/static/usage.js?v=token-usage-v3" defer></script><script src="/static/app.js?v=token-usage-v3" defer></script>
 </body></html>
