@@ -1,6 +1,6 @@
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const state = {listKind:'session',offset:0, next:null, sid:null, session:null, stats:null, tab:'timeline', events:[], parallelGroups:[], parallelByEvent:new Map(), parallelNote:'', cursor:null, request:0, listRequest:0, features:[]};
+const state = {listKind:'session',offset:0, next:null, sid:null, session:null, stats:null, tab:'timeline', events:[], parallelGroups:[], parallelByEvent:new Map(), parallelNote:'', cursor:null, request:0, listRequest:0, features:[], purposes:[], unclassified:[], classifying:false, stopClassification:false};
 let noticeTimer, searchTimer;
 let usageRequest=0, usageReport=null;
 let eventView='table', eventRawRequest=0, eventLineageRequest=0;
@@ -25,6 +25,10 @@ async function loadSessions() {
   const data=await json(`/api/v1/sessions?${params}`);
   if(request!==state.listRequest)return;
   state.next=data.next_offset;
+  state.unclassified=data.items.filter(s=>s.identity_kind==='session'&&!s.classification).map(s=>s.id);
+  $('#purpose-controls').hidden=state.listKind!=='session'||!state.features.includes('classification');
+  $('#classify-page').disabled=state.classifying||!state.unclassified.length;
+  $('#classify-page').textContent=`✧ Classify this page (${state.unclassified.length})`;
   const unattributed=state.listKind==='unattributed';
   const counts=data.identity_counts||{};
   $('#total').textContent=data.total;$('#nav-count').textContent=counts.session||0;
@@ -35,12 +39,42 @@ async function loadSessions() {
   $('#identity-column').textContent=unattributed?'TELEMETRY GROUP':'SESSION'; $('#search').placeholder=unattributed?'Search telemetry…':'Search sessions…'; $('#search').setAttribute('aria-label',unattributed?'Search telemetry':'Search sessions');
   $('#identity-note').textContent=unattributed?'These records have no unambiguous conversation identity. Each trace or resource group remains inspectable; it is not counted as a Codex session.':'Sessions are grouped by recorded conversation identity. Counts include imported and observed sessions, including automatic reviewers; they are not a count of human conversations.';
   $('#empty').hidden=data.items.length>0; if(!data.items.length&&unattributed)$('#empty').innerHTML='<h2>No unattributed telemetry matches</h2><p>Change the search or category filter.</p>'; else if(!data.items.length)$('#empty').innerHTML='<h2>No matching sessions</h2><p>Import a rollout, load the demo, or change the filter. Background traces appear under Unattributed telemetry.</p>';
-  $('#sessions').innerHTML=data.items.map(s=>`<tr tabindex="0" data-id="${esc(s.id)}"><td><span class="session-name">${esc(s.title==='Untitled session'&&s.identity_kind!=='session'?'Unattributed telemetry':s.title)}</span><span class="session-sub">${esc(s.id.slice(0,28))}</span></td><td><span class="pill">${esc(s.agent)}</span></td><td>${s.classification?`<span class="pill category">${esc(s.classification.category)}</span> ${s.classification.dummy?'<span class="pill dummy">dummy</span>':''}`:'<span class="muted">Unclassified</span>'}</td><td>${date(String(s.started_at))}</td><td>↗</td></tr>`).join('');
+  $('#sessions').innerHTML=data.items.map(s=>`<tr tabindex="0" data-id="${esc(s.id)}"><td><span class="session-name">${esc(s.title==='Untitled session'&&s.identity_kind!=='session'?'Unattributed telemetry':s.title)}</span><span class="session-sub">${esc(s.id.slice(0,28))}</span></td><td><span class="pill">${esc(s.agent)}</span></td><td>${s.classification?`<span class="pill category">${esc(purposeLabel(s.classification.category))}</span> ${s.classification.dummy?'<span class="pill dummy">dummy</span>':''}`:'<span class="muted">Unclassified</span>'}</td><td>${date(String(s.started_at))}</td><td>↗</td></tr>`).join('');
   $('#page-info').textContent=data.total?`${state.offset+1}–${state.offset+data.items.length} of ${data.total} ${unattributed?'telemetry groups':'sessions'}`:'No sessions found';
   $('#prev').disabled=state.offset===0;$('#next').disabled=state.next===null;
   document.querySelectorAll('[data-id]').forEach(row=>{const open=()=>location.hash=encodeURIComponent(row.dataset.id);row.onclick=open;row.onkeydown=e=>{if(e.key==='Enter')open();};});
 }
-function renderClassification(s) { const c=s.classification;$('#classification').hidden=!c;if(c)$('#classification').innerHTML=`<span class="pill category">${esc(c.category)}</span>${esc(c.reason)} <span class="muted">· ${esc(c.model)}${c.dummy?' · dummy fallback':''}</span>`; }
+function purposeLabel(category) { return state.purposes.find(p=>p.id===category)?.label||category; }
+function renderClassification(s) {
+  const c=s.classification;$('#classification').hidden=!c;
+  if(c)$('#classification').innerHTML=`<span class="pill category">${esc(purposeLabel(c.category))}</span>${esc(c.reason)} <span class="muted">· ${esc(c.model)} · ${c.dummy?'Inferred (dummy)':c.provider==='external'?'External agent (unverified)':'Model-generated'}${c.truncated?' · Partial transcript':''}${c.classified_at?' · '+esc(date(c.classified_at)):''}</span>`;
+}
+async function classifyPage() {
+  if(state.classifying)return;
+  const ids=[...state.unclassified];if(!ids.length)return;
+  state.classifying=true;state.stopClassification=false;
+  $('#classify-page').disabled=true;$('#stop-classification').hidden=false;
+  const progress=$('#classification-progress');progress.hidden=false;
+  let completed=0,failed=0,dummy=0,skipped=0;
+  const errors=[];
+  try {
+    for(const [index,sid] of ids.entries()) {
+      if(state.stopClassification)break;
+      progress.textContent=`Classifying ${index+1} of ${ids.length}…`;
+      try {
+        const session=await json(`/api/v1/sessions/${encodeURIComponent(sid)}`);
+        if(session.classification){skipped++;continue;}
+        const result=await json(`/api/v1/sessions/${encodeURIComponent(sid)}/classify`,{method:'POST'});
+        completed++;if(result.dummy)dummy++;
+        if(state.sid===sid&&state.session){state.session.classification=result;renderClassification(state.session);}
+      } catch(e) { failed++;errors.push(`${sid}: ${e.message}`); }
+    }
+    progress.textContent=`${state.stopClassification?'Stopped. ':''}${completed} classified${dummy?` (${dummy} dummy)`:''}, ${skipped} already classified, ${failed} failed.${errors.length?' '+errors.join(' · '):''}`;
+  } finally {
+    state.classifying=false;$('#stop-classification').hidden=true;
+    await loadSessions();
+  }
+}
 async function openSession(sid) {
   ++usageRequest;usageReport=null;$('#usage-model').value='';$('#usage-export').disabled=true;$('#usage-pagination').hidden=true;$('#usage-content').innerHTML='<p class="usage-empty">Loading token usage…</p>';
   const request=++state.request; state.sid=sid;state.events=[];state.cursor=null;state.parallelGroups=[];state.parallelByEvent=new Map();$('#parallel-summary').hidden=true;
@@ -256,7 +290,9 @@ $('#file').onchange=run(async()=>{const files=[...$('#file').files];let last;for
 $('#demo').onclick=run(()=>busy($('#demo'),async()=>{const response=await fetch('/static/demo.jsonl');if(!response.ok)throw Error('Demo fixture unavailable');const result=await json('/api/v1/import/codex',{method:'POST',headers:{'Content-Type':'application/x-ndjson'},body:await response.text()});notice('Demo imported. Explore the timeline or branch from a user input.');location.hash=encodeURIComponent(result.session_ids[0]);}));
 document.querySelectorAll('[data-tab]').forEach(button=>button.onclick=run(async()=>{state.tab=button.dataset.tab;document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b===button));await loadEvents();}));
 $('#source').onchange=run(()=>loadEvents());$('#more').onclick=run(()=>loadEvents(true));$('#event-search').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(run(()=>loadEvents()),250);};
-$('#classify').onclick=run(()=>busy($('#classify'),async()=>{const result=await json(`/api/v1/sessions/${encodeURIComponent(state.sid)}/classify`,{method:'POST'});state.session.classification=result;renderClassification(state.session);notice(result.dummy?`Classified with dummy model: ${result.fallback_reason}`:'Session classified');}));
+$('#classify-page').onclick=run(classifyPage);
+$('#stop-classification').onclick=()=>{state.stopClassification=true;};
+$('#classify').onclick=run(()=>busy($('#classify'),async()=>{const sid=state.sid;const result=await json(`/api/v1/sessions/${encodeURIComponent(sid)}/classify`,{method:'POST'});if(state.sid===sid){state.session.classification=result;renderClassification(state.session);}notice(result.dummy?`Classified with dummy model: ${result.fallback_reason}`:'Session purpose classified');}));
 $('#export').onclick=run(()=>busy($('#export'),async()=>{const response=await api(`/api/v1/sessions/${encodeURIComponent(state.sid)}/export${state.tab==='inputs'?'?kind=user':''}`);download(await response.text(),'agentboard-events.jsonl');}));
 async function branch(mode){const replacement=$('#replacement').value;if(!replacement.trim())throw Error('Enter a replacement input');const result=await json(`/api/v1/sessions/${encodeURIComponent(state.sid)}/${mode}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({input_id:state.input,replacement})});$('#branch-dialog').close();if(mode==='codex-plan'){download(JSON.stringify(result,null,2),'codex-branch-plan.json','application/json');notice('Plan downloaded. Use agentboard resume to execute locally.');}else{notice(result.dummy?'Replay completed with dummy model':'Replay completed');location.hash=encodeURIComponent(result.session_id);}}
 $('#replay').onclick=run(()=>busy($('#replay'),()=>branch('replay')));$('#native-plan').onclick=run(()=>busy($('#native-plan'),()=>branch('codex-plan')));
@@ -264,7 +300,7 @@ document.querySelectorAll('.close').forEach(b=>b.onclick=()=>b.closest('dialog')
 $('#token').onclick=()=>{$('#api-token').value=sessionStorage.getItem('agentboard-token')||'';$('#token-dialog').showModal();};
 $('#save-token').onclick=run(async()=>{sessionStorage.setItem('agentboard-token',$('#api-token').value);$('#token-dialog').close();await init();});
 window.onhashchange=run(route);
-async function init(){try{const config=await json('/api/v1/config');state.features=config.features;$('#endpoint-hint').textContent=location.host;if(!config.otlp_enabled)$('#ingestion-hint').textContent='Use explicit imports or a database snapshot to inspect a fixed dataset. Live telemetry is disabled here.';$('#environment-note').hidden=config.environment!=='dev';$('#environment-note').textContent=`DEV · ${config.database_name} · Live telemetry ${config.otlp_enabled?'enabled':'disabled — fixed imports and snapshots'}`;$('#connection').textContent=config.environment==='dev'?'● Connected · DEV':'● Connected';await route();}catch(e){$('#connection').textContent='○ Connection required';throw e;}}
+async function init(){try{const config=await json('/api/v1/config');state.features=config.features;state.purposes=config.classification_taxonomy.categories;const selectedCategory=$('#category').value;$('#category').innerHTML='<option value="">All purposes</option><option value="unclassified">Unclassified</option>'+state.purposes.map(p=>`<option value="${esc(p.id)}">${esc(p.label)}</option>`).join('');$('#category').value=selectedCategory;$('#purpose-note').textContent=config.model_mode==='dummy'?'Dummy mode uses test keyword rules. Classify only the unclassified sessions on this page.':'Run the configured model for unclassified sessions on this page.'+(config.model_mode==='auto'?' Offline requests fall back to labeled dummy results.':'');$('#endpoint-hint').textContent=location.host;if(!config.otlp_enabled)$('#ingestion-hint').textContent='Use explicit imports or a database snapshot to inspect a fixed dataset. Live telemetry is disabled here.';$('#environment-note').hidden=config.environment!=='dev';$('#environment-note').textContent=`DEV · ${config.database_name} · Live telemetry ${config.otlp_enabled?'enabled':'disabled — fixed imports and snapshots'}`;$('#connection').textContent=config.environment==='dev'?'● Connected · DEV':'● Connected';await route();}catch(e){$('#connection').textContent='○ Connection required';throw e;}}
 run(init)();
 
 $('#export-raw').onclick=run(()=>busy($('#export-raw'),async()=>{const response=await api(`/api/v1/sessions/${encodeURIComponent(state.sid)}/raw`);download(await response.arrayBuffer(),'rollout.jsonl');}));

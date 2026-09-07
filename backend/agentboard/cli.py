@@ -55,6 +55,11 @@ def main():
     export_mode.add_argument("--inputs-only", action="store_true")
     export_mode.add_argument("--raw", action="store_true", help="Export the latest archived rollout exactly")
     export.add_argument("--import-id", type=int, help="Select a raw archive version (requires --raw)")
+    classify = commands.add_parser("classify", help="Classify session purposes with the configured model")
+    classify.add_argument("session_ids", nargs="*", help="Session IDs to classify")
+    classify.add_argument("--all", action="store_true", help="Classify all unclassified sessions")
+    classify.add_argument("--limit", type=int, help="Maximum sessions to select with --all (newest first)")
+    classify.add_argument("--force", action="store_true", help="Replace existing classifications too")
     commands.add_parser("repair-otlp-sessions", help="Repair session associations from preserved OTLP spans")
     snapshot = commands.add_parser("snapshot", help="Copy a live SQLite database into a new isolated database")
     snapshot.add_argument("--source", required=True, type=Path, help="Existing database opened read-only")
@@ -73,6 +78,13 @@ def main():
         parser.error(str(exc))
     if args.database:
         settings.database = args.database
+    if args.command == "classify":
+        if "classification" not in settings.features:
+            parser.error("The classification feature is disabled")
+        if bool(args.session_ids) == args.all:
+            parser.error("Provide session IDs or --all")
+        if args.limit is not None and (not args.all or args.limit < 1):
+            parser.error("--limit requires --all and a positive integer")
     if args.command == "serve":
         host = args.host if args.host is not None else settings.host
         port = args.port if args.port is not None else settings.port
@@ -100,7 +112,30 @@ def main():
             parser.error(str(exc))
         return
     store = Store(settings.database)
-    if args.command == "repair-otlp-sessions":
+    if args.command == "classify":
+        from .models import ModelGateway, ModelServiceError, classify_session
+
+        gateway = ModelGateway(settings)
+        selected = (store.classification_candidates(args.limit, args.force) if args.all
+                    else list(dict.fromkeys(args.session_ids)))
+        completed = skipped = failures = 0
+        for sid in selected:
+            try:
+                if store.get_session(sid)["classification"] and not args.force:
+                    skipped += 1
+                    result = {"status": "skipped", "reason": "Already classified; use --force to replace"}
+                else:
+                    classification = classify_session(store, sid, gateway, settings.max_model_chars)
+                    result = {"status": "classified", "classification": classification}
+                    completed += 1
+            except (KeyError, ValueError, ModelServiceError, sqlite3.Error) as exc:
+                failures += 1
+                result = {"status": "error", "error": str(exc)}
+            print(json.dumps({"session_id": sid, **result}), flush=True)
+        print(f"Classification: {completed} classified, {skipped} skipped, {failures} failed", file=sys.stderr)
+        if failures:
+            raise SystemExit(1)
+    elif args.command == "repair-otlp-sessions":
         print(json.dumps(store.repair_otlp_sessions()))
     elif args.command == "import":
         processed = failures = inserted = no_new_events = 0

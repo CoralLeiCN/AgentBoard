@@ -109,7 +109,7 @@ Implementation references: [Codex telemetry configuration](https://developers.op
 
 ## Classification and edited continuations
 
-The optional model gateway uses the OpenAI client against `http://localhost:30000/v1`, discovers a model at `/models`, and calls `/chat/completions`. It makes no model requests during tracing/import. When the service cannot be reached, `auto` mode uses a labeled dummy response/keyword classifier. Dummy classification is a test placeholder, not an AI judgment. A reachable server that rejects a request or returns invalid classification JSON is reported as an error, not silently replaced.
+The optional model gateway uses the OpenAI client against `http://localhost:30000/v1`, discovers a model at `/models`, and calls `/chat/completions` by default. Set `AGENTBOARD_MODEL_API=responses` to use `/responses` instead. It makes no model requests during tracing/import. When the service cannot be reached, `auto` mode uses a labeled dummy response/keyword classifier. Dummy classification is a test placeholder, not an AI judgment. A reachable server that rejects a request or returns invalid classification JSON is reported as an error, not silently replaced.
 
 ```sh
 AGENTBOARD_MODEL_MODE=local AGENTBOARD_MODEL=my-model uv run agentboard serve
@@ -117,7 +117,16 @@ AGENTBOARD_MODEL_MODE=local AGENTBOARD_MODEL=my-model uv run agentboard serve
 AGENTBOARD_MODEL_MODE=dummy uv run agentboard serve
 ```
 
-Classify from the UI or `POST /api/v1/sessions/{id}/classify`. An independent AI worker/coding session can read `/export` and write `{category, reason, model}` to `PUT /classification`. Supported categories are writing, coding, bug-fixing, research, and other. Classification reads a bounded 60,000-character transcript and reports truncation. Categories and reasons from model output are validated; transcript instructions are treated as data in the classification prompt.
+Classify one session with **Classify purpose**, or use **Classify this page** for unclassified sessions in the current view. Purpose filters cover writing, coding, debugging, research, analysis, creative media, guidance, and other, adapted from the enterprise AI report. Existing `bug-fixing` IDs stay compatible. A bounded conversation transcript is sent only when requested; partial input and dummy results are labeled.
+
+```sh
+uv run agentboard classify SESSION_ID
+uv run agentboard classify --all --limit 100
+# Replace saved labels explicitly:
+uv run agentboard classify --all --force
+```
+
+An independent agent can fetch `/api/v1/sessions/{id}/classification-input` and submit `{category, reason, model}` to `PUT /api/v1/sessions/{id}/classification`. Classification uses a shared enum-backed Pydantic model and strict Structured Outputs on both supported model APIs. Inspect its JSON Schema at `GET /api/v1/classification-schema`. Edit model instructions in [prompts/](backend/agentboard/prompts/README.md). See [session purpose classification](docs/session-purpose.md) for the contract, model configuration, category definitions, batch behavior, and the external-agent workflow.
 
 **Conversation replay:** in **User inputs**, choose **Branch & edit**. Replay retains the preceding text transcript and tool observations, replaces the selected prompt, discards later context, calls the configured model, and saves a separate linked session. It does not run tools, execute Codex, restore files, reproduce hidden model state, or replay images. Oversized contexts and histories containing compaction/rollback are rejected rather than silently truncated. The original session is unchanged.
 
@@ -160,6 +169,8 @@ The [timestamp contract](docs/data-lineage.md#61-timestamp-contract) specifies o
 | `AGENTBOARD_MODEL_MODE` | `auto` | `auto`, `local` (fail when unavailable), or `dummy` |
 | `AGENTBOARD_MODEL_BASE_URL` | `http://localhost:30000/v1` | OpenAI-compatible endpoint |
 | `AGENTBOARD_MODEL` | unset | Model ID; discovers first advertised model otherwise |
+| `AGENTBOARD_MODEL_API` | `chat_completions` | `chat_completions` or `responses` wire protocol |
+| `AGENTBOARD_MODEL_TIMEOUT_SECONDS` | `30` | Positive request timeout; increase for slower local models |
 | `AGENTBOARD_MODEL_KEY` | `local` | Credential for that endpoint |
 | `AGENTBOARD_API_TOKEN` | unset | Optional shared bearer token |
 | `AGENTBOARD_ALLOWED_HOSTS` | `localhost,127.0.0.1,::1,testserver` | Comma-separated HTTP Host allowlist; configure your hostname for remote use |
