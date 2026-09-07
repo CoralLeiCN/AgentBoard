@@ -1,6 +1,6 @@
 # AgentBoard product specification
 
-Updated: 2026-09-06
+Updated: 2026-09-07
 
 Agreed requirements, implementation status, and acceptance criteria for AgentBoard. Codex compatibility is limited to supported source variants.
 
@@ -34,7 +34,7 @@ Core requirements:
 | TIME-01 | Separate elapsed, LLM, tool, and waiting-for-user time. | Implemented, with inference limitations |
 | TIME-02 | Explicitly label parallel tool groups from recorded overlap. | Implemented; inferred membership (§6.2) |
 | USAGE-01 | Track recorded token usage and estimate its Standard API value in USD. | Implemented for archived Codex rollouts; evidence and pricing limits in [lineage §7.1](data-lineage.md#71-token-usage-and-api-value) |
-| INPUT-01 | Extract prompts and distinguish their actual origin. | Extraction implemented; origin distinction is a discussed follow-up |
+| INPUT-01 | Extract prompts and distinguish their actual origin. | Implemented with inferred attribution and coverage limits (§7) |
 | PROV-01 | Distinguish normalized, calculated, inferred, and model-generated field values. | Implemented |
 | VIEW-01 | Switch between table and normalized JSON, remembering the last view. | Implemented |
 | API-01 | Expose session data, timing, input extraction, and export to external tools. | Implemented |
@@ -157,7 +157,7 @@ Treat persisted Codex rollouts as a version-dependent format. Do not assume a st
 | Record the producing Codex version and our mapping version. | Source `session_meta.payload.cli_version` is retained when supplied; absence remains unknown. Archives record `mapping_version`. Verified Codex event and field links identify their archive/version; see [field lineage](data-lineage.md#36-per-field-codex-lineage) for backfill and source limits. Changing normalization semantics must advance the mapping version and document existing-data treatment. |
 | Normalize only through documented, evidence-backed mappings. | [Lineage §3.3](data-lineage.md#33-record-to-event-mapping) describes current mappings and their assumptions. Preserve unknown data without inventing meaning; existing heuristic correctness gaps remain listed in the [gap register](data-quality-gaps.md). |
 | Preserve unfamiliar fields and report unsupported records. | Preservation is implemented. Reports distinguishing mapped, intentionally ignored, unsupported, and rejected records are still required (DQ-03); absence from normalized events must not be interpreted as absent activity. |
-| Separate structural validation from interpretation. | JSON/payload/timestamp checks are partial (DQ-14). Valid structure or `role: "user"` does not establish human authorship. Human/context/reviewer classification remains unimplemented (INPUT-01/DQ-01). |
+| Separate structural validation from interpretation. | JSON/payload/timestamp checks are partial (DQ-14). Valid structure or `role: "user"` does not establish human authorship. Rollout input attribution uses explicit source metadata and context envelopes; it remains inferred (INPUT-01/DQ-01). |
 
 For a new supported variant, add a synthetic or redacted fixture, document source fields and transformations, and verify raw round-trip preservation and intended normalized behavior. Record the producing version when known, the mapping version, and effects on existing imports. These are change-review requirements, not claims of compatibility with every Codex release.
 
@@ -238,12 +238,13 @@ Use `kind: "user_wait"` and amber timeline styling.
 | `attributes.wait_type` | Definition | Quality |
 | --- | --- | --- |
 | `input_request` | Lifetime of a recognized blocking `request_user_input` call until its result. Exclude this operation from tool time. | Estimated for rollout call/output pairs; measured when suitable item or telemetry timing exists. |
-| `between_turns` | Gap from turn completion, or a final answer when completion is absent, to the next user prompt. | Inferred/estimated; may include idle time. |
+| `between_turns` | Gap from eligible turn completion, or a final answer when completion is absent, to the next human-attributed rollout prompt. | Inferred/estimated; may include idle time. |
 
 Requirements and limits:
 
 - Merge overlapping waits within the same source/quality group.
 - Keep missing ends unknown; show an unfinished wait without inventing a duration.
+- Interpret **No recorded waits** as absence of qualifying events in the selected source, not proof of zero human waiting. A between-turn estimate has boundary evidence but no corresponding raw wait record; see [lineage §4.3](data-lineage.md#43-between-turn-waits).
 - Do not extrapolate waiting time after the last completed turn.
 - Do not classify asynchronous question tool lifetimes as blocking waits.
 - Do not infer waiting solely from an interruption/rollback marker.
@@ -254,7 +255,9 @@ Requirements and limits:
 
 Acceptance: the synthetic demo has one inferred between-turn wait of **31,900 ms**. Overlapping blocking requests lasting 3 s and 4 s over a shared 5 s interval yield `sum_ms = 7000` and `active_ms = 5000`.
 
-Internal reviewer sessions can still produce misleading user-wait estimates because input origin is not yet distinguished; see INPUT-01.
+Real-source acceptance: the redacted desktop excerpt retains one **2,716,391 ms** between-turn wait; the one-prompt CLI and internal reviewer excerpts retain none. These are source-derived regression cases, not explicit measurements of human waiting. [Selection, redaction, and expected results](../examples/fixtures/input-origin-real/README.md); [automated checks](../backend/tests/test_real_input_origins.py).
+
+Recognized internal reviewer sessions are excluded from rollout human-wait estimates after v5 import. Unmarked automation, unknown origin formats, and older imports remain uncertain; see INPUT-01.
 
 ### 6.2 Parallel tool groups
 
@@ -268,26 +271,19 @@ Acceptance: the synthetic demo labels its two initial shell calls as one group, 
 
 ## 7. User inputs and internal context
 
-**INPUT-01 — Partially implemented; origin distinction is a discussed follow-up**
+**INPUT-01 — Implemented 2026-09-07, with inference limits**
 
-Implemented behavior:
+- Attribute rollout inputs as human, injected context, or internal; retain the observed role, matching evidence, rule version, text, and raw records separately.
+- Keep context/internal records under All events and full export. Exclude them from input counts, input-only export, and selectable replay/native branch inputs. Retain them in the transcript preceding a selected human input.
+- Derive titles from human-attributed prompts. Label recorded reviewer/subagent sessions and link their parent when supplied.
+- Context envelopes do not consume a pending wait or move an LLM anchor. Internal activity cancels pending human waits. Internal/context-only turns do not seed another human wait; recognized blocking requests in that scope remain inspectable timed events outside human-wait/tool totals.
+- Deduplicate mirrors within each origin, including context interleaved between prompt representations, while retaining repeated response-item prompts.
 
-- Extract user-role messages and event-message fallbacks.
-- Deduplicate mirrored representations while retaining repeated real prompts.
-- Join adjacent prompt fragments without inserting new characters.
-- Provide input counts, filtering, export, and previous-turn information for branching.
+Exact rules and reimport behavior are in [lineage §3.4.1](data-lineage.md#341-input-attribution). Human authorship is inferred, not verified. Unknown envelopes, automation without explicit internal evidence, and a person submitting an entire unquoted context envelope remain ambiguous. OTLP and older replay authorship are unchanged; new replay retains input attribution across branches.
 
-Known defect: the current importer treats injected `role: "user"` environment context and internal reviewer requests as user inputs. This can affect session titles, counts, branching controls, and inferred waiting time. The session metadata may already contain subagent source and parent identifiers, but the UI does not use them to distinguish these input origins.
+[Regression coverage](../backend/tests/test_input_origin.py) checks the guardian acceptance case, quoted markup, fragmented/multimodal input, both mirror orders, waits, raw evidence, branch rejection, retained replay context, and legacy/growing/conflicting reimports. Existing databases require explicit reimport; startup does not backfill them.
 
-Discussed desired behavior, **not yet implemented**:
-
-1. Distinguish human-authored prompts, injected environment/context messages, and internal agent/reviewer requests.
-2. Keep environment/context records inspectable under All events while excluding them from human input counts and human prompt branching controls.
-3. Identify internal reviewer/subagent sessions and their relationship to the parent session rather than presenting their messages as ordinary human prompts.
-4. Avoid attributing internal scheduling or review activity to waiting for a human.
-5. Retain the original evidence and avoid discarding a real prompt merely because it contains quoted markup.
-
-Acceptance scenario: a guardian session whose first user-role record is `<environment_context>…</environment_context>` must not label that record as the first human prompt or offer **Branch & edit** on it. The classification mechanism and migration/backfill approach remain to be designed.
+[Real-source regression evidence](../examples/fixtures/input-origin-real/README.md) adds selected, redacted CLI/Desktop/guardian records with preserved timing gaps and old/new importer results. It confirms these patterns occur in actual rollouts; it does not measure representative classifier accuracy.
 
 ## 8. Event provenance and inspector views
 
@@ -448,7 +444,7 @@ Maintain the specification alongside feature changes. Validate behavior at the r
 | Native continuation | Plan validation and fake app-server protocol tests; no paid model execution required for unit tests. |
 | Real Codex endpoint | Opt-in environment-configured Responses API provider; isolated AgentBoard receiver/database; successful response plus log, trace, and normalized LLM-event assertions. Skips before execution when unconfigured. |
 | App-server schema workflow | Stored manifest/file/reference integrity; version and file drift detection; no-op refreshes; removed-file cleanup; preservation on failed generation/replacement. [Tests](../backend/tests/test_schema_workflow.py) use a fake CLI. |
-| INPUT-01 follow-up | Environment context/internal requests excluded from human input/branch/wait semantics once implemented. |
+| INPUT-01 | Context/internal exclusion, quoted markup, mirror ordering, parent metadata, wait boundaries, and explicit reimport corrections. |
 
 For development dependencies and existing checks:
 
@@ -481,7 +477,7 @@ Acceptance: every row has a runnable script or an explicit UI/CLI walkthrough. A
 
 | Item | Current position |
 | --- | --- |
-| Human/context/internal-request distinction | Discussed follow-up; current classifications can mislead counts and waiting time. |
+| Verified human authorship | Rollout rules exclude recognized context/internal input; unknown wrappers, unmarked automation, and identical human-supplied envelopes remain ambiguous (§7). |
 | Automatic rollout watcher/import hooks | Not implemented; imports are explicit. |
 | Dashboard live refresh | Not implemented; manually refresh after ingestion. |
 | Exact human think time, embedded approvals, async question waits | Not reliably established from the currently supported records. |
@@ -516,7 +512,7 @@ Traceability to initial requirements. **Documented** means represented with limi
 | Analyze time spent on LLM responses and tool calls | Section 6. | Documented, including measured/estimated distinctions and overlapping intervals. |
 | Classify writing, coding, bug-fixing, and similar sessions using another AI model or coding session | Section 10.1. | Documented, including external coding-session classification. |
 | Resume from the middle and change user input | Sections 10.2 and 10.3. | Documented through transcript replay and native continuation at supported turn boundaries; exact replay and file restoration are not claimed. |
-| Easily filter and extract all user inputs | Sections 7 and 9. | Documented; human/context/internal-input distinction remains an implementation gap. |
+| Easily filter and extract all user inputs | Sections 7 and 9. | Implemented with inferred rollout origin and explicit reimport; authorship coverage limits remain (§7). |
 | Repository `examples/` folder with a demo for every initial use case | Section 12.1. | Explicit requirement with a runnable demo mapping. |
 | Use the OpenAI client with the local model service and its models endpoint | Sections 10.1 and 12.1. | Python OpenAI client and exact models endpoint specified. |
 | Continue development/testing with a dummy model if the local service is unavailable | Sections 10.1 and 12.1. | Documented explicitly for examples and model-feature development. |

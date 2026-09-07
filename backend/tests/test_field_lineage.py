@@ -55,7 +55,7 @@ def test_every_codex_leaf_resolves_to_archive_or_explicit_application_rule(clien
             for source in description["sources"]:
                 present, value = resolve(records[(source["import_id"], source["line_number"])], source["pointer"])
                 assert (source["present"], source["value"]) == (present, value)
-        assert all(a["mapping_version"] == "codex-jsonl-v4" for a in result["archives"])
+        assert all(a["mapping_version"] == "codex-jsonl-v5" for a in result["archives"])
     session = lineage(client, sid=imported)
     assert all(d["available"] for p, d in session["fields"].items() if p != "/classification")
     assert session["fields"]["/classification"]["origin"] == "unknown"

@@ -5,6 +5,7 @@ import re
 import shlex
 
 from ..domain import Event, RawLine, RawTraceEnd, Session, is_user_input_tool, stable_id
+from ..input_origin import attribute_input, session_input_origin
 from ..lineage import CodexLineage, copied, ref, spec
 from ..timestamps import format_timestamp, normalize_timestamp
 
@@ -28,7 +29,7 @@ def command_text(command):
 
 
 class CodexAdapter:
-    mapping_version = "codex-jsonl-v4"
+    mapping_version = "codex-jsonl-v5"
 
     def parse(self, lines):
         sid = None
@@ -37,12 +38,19 @@ class CodexAdapter:
         pending = {}
         anchor = None
         active = False
-        seen_user = None
-        fallback_user = None
+        seen_inputs = {}
+        fallback_inputs = {}
         session = None
         seq = 0
         waiting_since = None
         lineage = CodexLineage()
+
+        turn_origin = None
+
+        def can_wait():
+            return session_input_origin(session.metadata)["origin"] != "internal" and turn_origin not in (
+                "internal", "context"
+            )
 
         def wait_until(ts):
             nonlocal waiting_since
@@ -87,6 +95,22 @@ class CodexAdapter:
                     raw_line_numbers=[],
                     attributes={"basis": "gap between rollout items; includes orchestration"},
                 )
+
+        def input_event(text, payload, ts, outer):
+            attribution = attribute_input(text, payload, session.metadata)
+            origin = attribution["origin"]
+            return event(
+                "user" if origin == "human" else "event",
+                {"human": "User input", "context": "Injected context", "internal": "Internal input"}[origin],
+                ts,
+                text=text,
+                attributes={
+                    "previous_turn_id": previous_turn,
+                    "transport_role": payload.get("role") if outer == "response_item" else None,
+                    "input_record_type": f"{outer}/{payload['type']}",
+                    "input_attribution": attribution,
+                },
+            )
 
         for seq, line in enumerate(lines, 1):
             yield RawLine(seq, line)
@@ -149,8 +173,9 @@ class CodexAdapter:
                         )
                         basis = "Codex reported tool duration"
                     name = item.get("tool") or item_type
-                    if item_kind == "tool" and is_user_input_tool(name):
-                        item_kind = "user_wait"
+                    input_request = item_kind == "tool" and is_user_input_tool(name)
+                    if input_request:
+                        item_kind = "user_wait" if can_wait() else "event"
                         basis += "; blocking input request lifetime, including delivery overhead"
                     yield lineage.item(Event(
                         id=stable_id(sid, "item", item.get("id", seq)),
@@ -168,7 +193,8 @@ class CodexAdapter:
                         attributes={
                             "basis": basis,
                             "item": item,
-                            **({"wait_type": "input_request"} if item_kind == "user_wait" else {}),
+                            **({"wait_type": "input_request", "input_scope": "human" if can_wait() else "internal"}
+                               if input_request else {}),
                         },
                         status="error"
                         if item.get("exit_code") not in (0, None) or item.get("status") == "failed"
@@ -179,42 +205,41 @@ class CodexAdapter:
                 lineage.context(p, seq)
                 active, anchor = True, ts
                 lineage.anchor = ref(seq, "/timestamp", "interval_start")
-            if outer == "response_item" and kind == "message" and p.get("role") == "user":
-                wait = wait_until(ts)
-                if wait:
-                    yield wait
-                text = content_text(p.get("content"))
-                # Event-message mirrors are redundant, but repeated real user prompts are retained.
-                if fallback_user is not None and fallback_user.text != text:
-                    yield fallback_user
-                fallback_user = None
-                seen_user = text
-                active, anchor = True, ts
-                lineage.anchor = ref(seq, "/timestamp", "interval_start")
-                yield event(
-                    "user", "User input", ts, text=text, attributes={"previous_turn_id": previous_turn}
-                )
-                if session.title == "Untitled session":
-                    session.title = text.strip().split("\n")[0][:100] or "Untitled session"
-                    lineage.title(session, lineage.text(r, seq))
-                    yield session
-            elif outer == "event_msg" and kind == "user_message":
-                wait = wait_until(ts)
-                if wait:
-                    yield wait
-                text = p.get("message", "")
-                if text != seen_user:
+            if (outer == "response_item" and kind == "message" and p.get("role") == "user") or (
+                outer == "event_msg" and kind == "user_message"
+            ):
+                text = content_text(p.get("content")) if outer == "response_item" else p.get("message", "")
+                prompt = input_event(text, p, ts, outer)
+                origin = prompt.attributes["input_attribution"]["origin"]
+                if origin == "human":
+                    wait = wait_until(ts)
+                    if wait:
+                        yield wait
+                    if session.title == "Untitled session":
+                        session.title = text.strip().split("\n")[0][:100] or "Untitled session"
+                        lineage.title(session, lineage.text(r, seq))
+                        yield session
+                elif origin == "internal":
+                    waiting_since = None
+                elif turn_origin is None:
+                    turn_origin = "context"
+                # Context does not begin work or move a pending human wait/LLM anchor.
+                if origin != "context":
+                    active, anchor, turn_origin = True, ts, origin
+                    lineage.anchor = ref(seq, "/timestamp", "interval_start")
+                # Track human and nonhuman mirrors separately so injected context
+                # cannot displace a remembered prompt and manufacture a duplicate.
+                if outer == "response_item":
+                    fallback_user = fallback_inputs.pop(origin, None)
+                    if fallback_user is not None and fallback_user.text != text:
+                        yield fallback_user
+                    seen_inputs[origin] = text
+                    yield prompt
+                elif text != seen_inputs.get(origin):
+                    fallback_user = fallback_inputs.get(origin)
                     if fallback_user is not None:
                         yield fallback_user
-                    fallback_user = event(
-                        "user", "User input", ts, text=text, attributes={"previous_turn_id": previous_turn}
-                    )
-                if session.title == "Untitled session":
-                    session.title = text.strip().split("\n")[0][:100] or "Untitled session"
-                    lineage.title(session, lineage.text(r, seq))
-                    yield session
-                active, anchor = True, ts
-                lineage.anchor = ref(seq, "/timestamp", "interval_start")
+                    fallback_inputs[origin] = prompt
             elif outer == "response_item" and kind in ("function_call", "custom_tool_call"):
                 waiting_since = None
                 span = llm_until(ts)
@@ -222,14 +247,18 @@ class CodexAdapter:
                     yield span
                 call = p.get("call_id") or p.get("id") or str(seq)
                 name = p.get("name", "tool")
-                user_wait = is_user_input_tool(name)
+                input_request = is_user_input_tool(name)
+                user_wait = input_request and can_wait()
                 pending[call] = event(
-                    "user_wait" if user_wait else "tool",
+                    "user_wait" if user_wait else "event" if input_request else "tool",
                     name,
                     ts,
                     call,
                     text=str(p.get("arguments", p.get("input", ""))),
-                    attributes={"call_id": call, **({"wait_type": "input_request"} if user_wait else {})},
+                    attributes={"call_id": call, **(
+                        {"wait_type": "input_request", "input_scope": "human" if user_wait else "internal"}
+                        if input_request else {}
+                    )},
                 )
                 anchor = None
             elif outer == "response_item" and kind in ("function_call_output", "custom_tool_call_output"):
@@ -278,20 +307,21 @@ class CodexAdapter:
                 )
                 if p.get("phase") == "final_answer":
                     active, anchor = False, None
-                    waiting_since = ts
-                    lineage.waiting = ref(seq, "/timestamp", "interval_start")
+                    waiting_since = ts if can_wait() else None
+                    lineage.waiting = ref(seq, "/timestamp", "interval_start") if waiting_since else None
             elif outer == "event_msg" and kind in ("task_complete", "turn_aborted"):
-                if fallback_user is not None:
-                    yield fallback_user
-                    fallback_user = None
+                yield from sorted(fallback_inputs.values(), key=lambda e: e.sequence)
+                fallback_inputs.clear()
                 previous_turn = p.get("turn_id", turn) if kind == "task_complete" else previous_turn
                 if kind == "task_complete":
                     lineage.previous_turn = (spec("normalized", "Turn ID propagated from preceding task_complete.",
                                                   ref(seq, "/payload/turn_id", "context"))
                                              if "turn_id" in p else lineage.turn)
-                seen_user = None
+                seen_inputs.clear()
                 active, anchor = False, None
-                waiting_since = ts if kind == "task_complete" else None
+                waiting_since = ts if kind == "task_complete" and can_wait() else None
+                turn_origin = None
+                lineage.input_sources = []
                 lineage.waiting = ref(seq, "/timestamp", "interval_start") if waiting_since else None
                 yield event("event", kind, ts, status="ok" if kind == "task_complete" else "interrupted")
             elif outer in ("compacted",) or (outer == "event_msg" and kind == "thread_rolled_back"):
@@ -302,8 +332,7 @@ class CodexAdapter:
                 yield event("event", "Token usage", ts, attributes={"info": p.get("info")})
         if sid is None:
             raise ValueError("No session_meta found")
-        if fallback_user is not None:
-            yield fallback_user
+        yield from sorted(fallback_inputs.values(), key=lambda e: e.sequence)
         for tool in pending.values():
             tool.status = "incomplete"
             lineage.incomplete(tool)

@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from .domain import RawLine, RawTraceEnd, Session
+from .input_origin import session_input_origin
 from .lineage import expanded, leaves, resolve, same_value, spec
 from .otlp import session_identity
 from .parallel import NOTE as PARALLEL_NOTE
@@ -154,6 +155,9 @@ class Store:
         raw_import_ids = []
         digest = hashlib.sha256()
         byte_count = line_count = 0
+        inferred_events = []
+        input_ids = []
+        excluded_titles = set()
         with self.connect() as db:
             for item in items:
                 if isinstance(item, RawLine):
@@ -165,6 +169,10 @@ class Store:
                     line_count += 1
                     db.execute("INSERT INTO raw_lines VALUES(?,?,?)", (raw_id, item.sequence, content))
                 elif isinstance(item, RawTraceEnd):
+                    if item.mapping_version.startswith("codex-jsonl-"):
+                        self._refresh_codex_inputs(
+                            db, item.session_id, raw_id, line_count, inferred_events, input_ids, excluded_titles
+                        )
                     previous = db.execute(
                         "SELECT id FROM raw_imports WHERE session_id=? AND sha256=? AND mapping_version=?",
                         (item.session_id, digest.hexdigest(), item.mapping_version),
@@ -193,6 +201,9 @@ class Store:
                     raw_id = None
                     digest = hashlib.sha256()
                     byte_count = line_count = 0
+                    inferred_events = []
+                    input_ids = []
+                    excluded_titles = set()
                 elif isinstance(item, Session):
                     sessions.add(item.id)
                     db.execute(
@@ -211,6 +222,16 @@ class Store:
                         self._save_field_sources(db, "session", item.id, stored, item, raw_id)
                 else:
                     d = item.model_dump()
+                    attribution = item.attributes.get("input_attribution")
+                    if raw_id is not None and item.source == "codex_jsonl":
+                        if attribution:
+                            input_ids.append(item.id)
+                        if item.kind == "llm" or (
+                            item.kind == "user_wait" and item.attributes.get("wait_type") == "between_turns"
+                        ):
+                            inferred_events.append(item)
+                        if attribution and attribution["origin"] != "human":
+                            excluded_titles.add(item.text.strip().split("\n")[0][:100])
                     if item.source == "otlp_trace" and "otel" in item.attributes:
                         # OTLP span identity survives correction of its session association.
                         prior = db.execute(
@@ -231,6 +252,17 @@ class Store:
                     )
                     inserted += cursor.rowcount
                     updated = False
+                    if cursor.rowcount == 0 and attribution and item.source == "codex_jsonl":
+                        # Change interpretation only when the recorded input still matches.
+                        # Conflicting same-line snapshots must not replace retained text.
+                        updated = db.execute(
+                            """UPDATE events SET kind=?,name=?,attributes=?
+                            WHERE session_id=? AND id=? AND source='codex_jsonl'
+                            AND text=? AND start_time=? AND (kind<>?
+                                OR json_extract(attributes,'$.input_attribution') IS NOT json(?))""",
+                            (item.kind, item.name, d["attributes"], item.session_id, item.id,
+                             item.text, item.start_time, item.kind, json.dumps(attribution)),
+                        ).rowcount > 0
                     # Reimporting older records moves recognized input requests out of tool time.
                     if cursor.rowcount == 0 and item.kind == "user_wait":
                         updated = db.execute(
@@ -238,6 +270,19 @@ class Store:
                             WHERE session_id=? AND id=? AND kind='tool'""",
                             (item.kind, d["attributes"], item.session_id, item.id),
                         ).rowcount > 0
+                    if cursor.rowcount == 0 and item.attributes.get("input_scope") and item.source in (
+                        "codex_jsonl", "codex_item"
+                    ):
+                        changed = db.execute(
+                            """UPDATE events SET kind=?,attributes=json_patch(attributes,?)
+                            WHERE session_id=? AND id=? AND source=? AND name=? AND text=?
+                            AND start_time=? AND (kind IN ('tool','user_wait')
+                                OR json_extract(attributes,'$.wait_type')='input_request')
+                            AND (kind<>? OR json_extract(attributes,'$.input_scope') IS NOT ?)""",
+                            (item.kind, d["attributes"], item.session_id, item.id, item.source, item.name,
+                             item.text, item.start_time, item.kind, item.attributes["input_scope"]),
+                        ).rowcount > 0
+                        updated = updated or changed
                     # Growing rollouts can complete a previously unfinished tool call.
                     if cursor.rowcount == 0 and item.end_time is not None:
                         completed = db.execute(
@@ -296,7 +341,10 @@ class Store:
         old = {row["field"]: json.loads(row["description"]) for row in db.execute(
             f"SELECT field,description FROM {table} WHERE {column}=?", (owner_id,)
         )}
-        descriptions = expanded(incoming.model_dump(), incoming.field_lineage)
+        incoming_value = incoming.model_dump()
+        if owner == "session":
+            incoming_value["input_origin"] = session_input_origin(incoming.metadata)
+        descriptions = expanded(incoming_value, incoming.field_lineage)
         for field, description in old.items():
             if field not in current or not same_value(current[field], description["value"]):
                 db.execute(f"DELETE FROM {table} WHERE {column}=? AND field=?", (owner_id, field))
@@ -359,6 +407,51 @@ class Store:
                     }
             return {"version": "field-lineage-v1", "session_id": sid, "event_id": event_id,
                     "fields": fields, "archives": list(archives.values()), "records": list(records.values())}
+
+    @staticmethod
+    def _refresh_codex_inputs(db, sid, raw_id, line_count, inferred_events, input_ids, excluded_titles):
+        # Recompute derived gaps for the imported prefix, retaining later events
+        # in a growing rollout. Contradictory snapshots cannot safely replace them.
+        conflict = db.execute(
+            """SELECT 1 FROM raw_imports r JOIN raw_lines old ON old.import_id=r.id
+            JOIN raw_lines new ON new.import_id=? AND new.sequence=old.sequence
+            WHERE r.session_id=? AND r.id<>?
+            AND rtrim(CAST(old.content AS TEXT),char(13)||char(10))
+                <>rtrim(CAST(new.content AS TEXT),char(13)||char(10)) LIMIT 1""",
+            (raw_id, sid, raw_id),
+        ).fetchone()
+        if not conflict:
+            db.execute(
+                """DELETE FROM events WHERE session_id=? AND source='codex_jsonl' AND sequence<=?
+                AND (kind='user' OR json_extract(attributes,'$.input_attribution') IS NOT NULL)
+                AND id NOT IN (SELECT value FROM json_each(?))""",
+                (sid, line_count, json.dumps(input_ids)),
+            )
+            db.execute(
+                """DELETE FROM events WHERE session_id=? AND source='codex_jsonl' AND sequence<=?
+                AND (kind='llm' OR (kind='user_wait' AND json_extract(attributes,'$.wait_type')='between_turns'))
+                AND id NOT IN (SELECT value FROM json_each(?))""",
+                (sid, line_count, json.dumps([event.id for event in inferred_events])),
+            )
+            for event in inferred_events:
+                db.execute(
+                    """UPDATE events SET start_time=?,end_time=?,attributes=?
+                    WHERE session_id=? AND id=? AND source='codex_jsonl'""",
+                    (event.start_time, event.end_time, json.dumps(event.attributes), sid, event.id),
+                )
+                stored = Store.event_row(db.execute(
+                    "SELECT * FROM events WHERE session_id=? AND id=?", (sid, event.id),
+                ).fetchone())
+                Store._save_field_sources(db, "event", stored["row_id"], stored, event, raw_id)
+        # Only replace an automatically derived title that came from excluded text.
+        title = db.execute("SELECT title FROM sessions WHERE id=?", (sid,)).fetchone()[0]
+        if title in excluded_titles:
+            first = db.execute(
+                """SELECT text FROM events WHERE session_id=? AND source='codex_jsonl' AND kind='user'
+                ORDER BY sequence,row_id LIMIT 1""", (sid,),
+            ).fetchone()
+            replacement = first[0].strip().split("\n")[0][:100] if first else ""
+            db.execute("UPDATE sessions SET title=? WHERE id=?", (replacement or "Untitled session", sid))
 
     @staticmethod
     def _index_otlp_identity(db, event):
@@ -537,6 +630,7 @@ class Store:
         d = dict(row)
         d["metadata"] = json.loads(d["metadata"])
         d["classification"] = json.loads(d["classification"]) if d["classification"] else None
+        d["input_origin"] = session_input_origin(d["metadata"])
         return d
 
     @staticmethod

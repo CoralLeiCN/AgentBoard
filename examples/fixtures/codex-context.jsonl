@@ -1,0 +1,7 @@
+{"timestamp": "2026-09-07T12:00:00Z", "type": "session_meta", "payload": {"id": "demo-context-inputs", "source": "cli", "originator": "agentboard-synthetic-demo"}}
+{"timestamp": "2026-09-07T12:00:01Z", "type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "<environment_context>\n<cwd>/synthetic/project</cwd>\n</environment_context>"}]}}
+{"timestamp": "2026-09-07T12:00:02Z", "type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "Explain the synthetic trace"}]}}
+{"timestamp": "2026-09-07T12:00:03Z", "type": "event_msg", "payload": {"type": "task_complete", "turn_id": "first"}}
+{"timestamp": "2026-09-07T12:00:04Z", "type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "<environment_context>\n<cwd>/synthetic/project</cwd>\n</environment_context>"}]}}
+{"timestamp": "2026-09-07T12:00:09Z", "type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "Now explain the waiting time"}]}}
+{"timestamp": "2026-09-07T12:00:10Z", "type": "event_msg", "payload": {"type": "task_complete", "turn_id": "second"}}

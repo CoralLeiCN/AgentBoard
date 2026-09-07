@@ -54,6 +54,20 @@ test('unknown adapter origins are not guessed',()=>{
   assert.equal(f.id.origin,'unknown');
 });
 
+test('input attribution is inferred separately from the transport role and text',()=>{
+  const overrides={kind:'event',name:'Injected context',text:'<environment_context>synthetic</environment_context>',
+    attributes:{transport_role:'user',input_record_type:'response_item/message',
+      input_attribution:{origin:'context',method:'codex-input-v1',basis:'entire text is a recognized context envelope',
+        evidence:{envelopes:['environment_context']}}}};
+  const f=fields(overrides);
+  assert.equal(f['attributes.input_attribution'].origin,'inferred');
+  assert.equal(f['attributes.transport_role'].origin,'normalized');
+  assert.equal(f['attributes.input_record_type'].origin,'normalized');
+  assert.equal(f.text.origin,'normalized');
+  assert.match(context.describeEvent({...event,...overrides}).summary,/context \(inferred\)/);
+  assert.match(context.describeEvent({...event,...overrides}).summary,/does not verify human authorship/);
+});
+
 test('trace-wide session association is labeled inferred separately from preserved telemetry',()=>{
   const f=fields({source:'otlp_trace',attributes:{
     agentboard_session_association:{basis:'unique conversation identity in trace'},
