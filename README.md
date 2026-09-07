@@ -65,6 +65,10 @@ The database defaults to `./agentboard.db`. Select another file with `agentboard
 - Optional local-model classification and conversation replay, plus native Codex branch plans and a CLI executor.
 - Explicit feature configuration and a small plugin registration hook. Only the Codex agent adapter ships.
 
+**Token usage & API value:** each session shows recorded input, cached input, cache writes, output and reasoning tokens, plus estimated Standard API token cost in USD. Expand the model breakdown or usage history, select **Price as** for an explicit model assumption, and export the complete usage report as JSON. Published prices are a dated snapshot verified on **2026-09-07**; this is an API-equivalent estimate, not a subscription charge or actual bill. Missing counts/models remain unavailable, with a priced subtotal when possible. Usage summaries that disagree with recorded responses produce a partial-coverage warning. [Calculation rules and coverage](docs/data-lineage.md#71-token-usage-and-api-value).
+
+Existing raw archives work immediately; older sessions without archives need an explicit reimport. Usage reads one archived rollout and refreshes with **↻**; live OTel usage and automatic rollout watching are not implemented. **Load demo** includes synthetic token usage under a new demo session identity.
+
 ## Understand the timing
 
 Historical gaps estimate activity; they do not establish exact full LLM latency.

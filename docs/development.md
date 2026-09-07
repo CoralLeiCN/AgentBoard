@@ -21,6 +21,16 @@ Open [the dev dashboard](http://127.0.0.1:4319) in Codex's internal browser. The
 uv run agentboard --config config/dev.toml import examples/fixtures/codex-session.jsonl
 ```
 
+For token usage verification, import the [redacted real Codex slice](../examples/fixtures/codex-real-usage-slice.md):
+
+```sh
+uv run agentboard --config config/dev.toml import examples/fixtures/codex-real-usage-slice.jsonl
+```
+
+It preserves recorded usage from six responses, including cached input and reasoning. It is a fixed partial session with documented redactions; synthetic fixtures still cover unsupported edge cases.
+
+Opening `frontend/index.html` as a local file redirects to `http://localhost:4319`, preserving the session fragment. Start the dev server first: styles, scripts and API routes are served together and require HTTP. If a dev server outlives a deleted worktree, stop that stale process and start the server from the current checkout; its old dataset may no longer be available.
+
 ## Debug a fixed copy of real data
 
 Before starting dev against a new database:

@@ -2,6 +2,7 @@ const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const state = {listKind:'session',offset:0, next:null, sid:null, session:null, stats:null, tab:'timeline', events:[], parallelGroups:[], parallelByEvent:new Map(), parallelNote:'', cursor:null, request:0, listRequest:0, features:[]};
 let noticeTimer, searchTimer;
+let usageRequest=0, usageReport=null;
 let eventView='table', eventRawRequest=0, eventLineageRequest=0;
 try { const saved=localStorage.getItem('agentboard-event-view');if(['json','raw'].includes(saved))eventView=saved; } catch { /* Storage may be disabled. */ }
 function notice(text, error=false) { $('#notice').textContent=text; $('#notice').hidden=false; $('#notice').className=error?'error':''; clearTimeout(noticeTimer); noticeTimer=setTimeout(()=>$('#notice').hidden=true, error?12000:5000); }
@@ -41,19 +42,46 @@ async function loadSessions() {
 }
 function renderClassification(s) { const c=s.classification;$('#classification').hidden=!c;if(c)$('#classification').innerHTML=`<span class="pill category">${esc(c.category)}</span>${esc(c.reason)} <span class="muted">· ${esc(c.model)}${c.dummy?' · dummy fallback':''}</span>`; }
 async function openSession(sid) {
+  ++usageRequest;usageReport=null;$('#usage-model').value='';$('#usage-export').disabled=true;$('#usage-pagination').hidden=true;$('#usage-content').innerHTML='<p class="usage-empty">Loading token usage…</p>';
   const request=++state.request; state.sid=sid;state.events=[];state.cursor=null;state.parallelGroups=[];state.parallelByEvent=new Map();$('#parallel-summary').hidden=true;
   $('#list-view').hidden=true;$('#detail-view').hidden=false;$('#event-list').innerHTML='<div class="loading">Loading trace…</div>';
   const [s,stats,archives]=await Promise.all([json(`/api/v1/sessions/${encodeURIComponent(sid)}`),json(`/api/v1/sessions/${encodeURIComponent(sid)}/stats`),json(`/api/v1/sessions/${encodeURIComponent(sid)}/raw-imports`)]);
   if(request!==state.request)return;
   $('#export-raw').hidden=!archives.items.length;
-  const unidentified=s.identity_kind!=='session'; $('#elapsed-label').textContent=unidentified?'RECORDED TIME RANGE':'SESSION ELAPSED'; $('#elapsed-note').textContent=unidentified?'First start to last recorded end':'Includes gaps between turns'; $('#back').textContent=state.listKind==='unattributed'?'← Unattributed telemetry':'← All sessions'; state.session=s;$('#session-title').textContent=unidentified&&s.title==='Untitled session'?'Unattributed telemetry':s.title;$('#session-id').textContent=s.id;$('#session-agent').textContent=`${s.agent.toUpperCase()} ${unidentified?'· UNATTRIBUTED TELEMETRY':'SESSION'}${s.metadata.dummy?' · DUMMY MODEL':''}`;
+  const unidentified=s.identity_kind!=='session'; $('#elapsed-label').textContent=unidentified?'RECORDED TIME RANGE':'SESSION ELAPSED'; $('#elapsed-note').textContent=unidentified?'First start to last recorded end':'Includes gaps between turns'; $('#back').textContent=state.listKind==='unattributed'?'← Unattributed telemetry':'← All sessions'; state.session=s;$('#session-title').textContent=unidentified&&s.title==='Untitled session'?'Unattributed telemetry':s.title;$('#session-id').textContent=s.id;$('#session-agent').textContent=`${s.agent.toUpperCase()} ${unidentified?'· UNATTRIBUTED TELEMETRY':'SESSION'}${s.metadata.dummy?' · DUMMY MODEL':''}${s.metadata.agentboard_fixture?.partial_session?' · REDACTED SESSION SLICE':''}`;
   $('#breadcrumbs').textContent=unidentified?'Workspace / Unattributed telemetry / Trace':'Workspace / Sessions / Trace'; $('#detail-identity-note').hidden=!unidentified; $('#detail-identity-note').textContent='This group has no unambiguous conversation identity. It preserves unattributed telemetry and is not counted as a Codex session.';renderClassification(s);
   const sources=new Set(stats.sources||stats.timing.map(t=>t.source));if(!sources.size)sources.add(s.agent==='replay'?'replay':s.agent==='otel'?'otlp_trace':'codex_jsonl');
   if(sources.has('codex_jsonl')||sources.has('codex_item'))sources.add('unified');
   const source=$('#source');for(const option of source.options)option.disabled=!sources.has(option.value);
   source.value=[...source.options].find(o=>!o.disabled).value;
   $('#classify').hidden=unidentified||!state.features.includes('classification');
+  run(()=>loadUsage())();
   await loadEvents();
+}
+async function loadUsage(more=false, refresh=false) {
+  const request=++usageRequest,sid=state.sid;
+  const params=new URLSearchParams({model_override:$('#usage-model').value});
+  if(!refresh&&usageReport?.archive)params.set('import_id',usageReport.archive.id);
+  if(more&&usageReport?.next_cursor)params.set('after',usageReport.next_cursor);
+  const detailsOpen=$('#usage-record-details')?.open;
+  $('#usage-export').disabled=true;
+  try {
+    const report=await json(`/api/v1/sessions/${encodeURIComponent(sid)}/usage?${params}`);
+    if(request!==usageRequest||sid!==state.sid)return;
+    if(more&&usageReport)report.items=[...usageReport.items,...report.items];
+    usageReport=report;
+    const selected=report.model_override||'';
+    $('#usage-model').innerHTML='<option value="">Recorded models</option>'+Object.keys(report.pricing.models).map(model=>`<option value="${esc(model)}">${esc(model)}</option>`).join('');
+    $('#usage-model').value=selected;
+    $('#usage-content').innerHTML=usageHTML(report);
+    if($('#usage-record-details'))$('#usage-record-details').open=!!detailsOpen;
+    $('#usage-export').disabled=!report.archive;
+    $('#usage-pagination').hidden=report.next_cursor===null;
+  } catch(error) {
+    if(request!==usageRequest||sid!==state.sid)return;
+    $('#usage-content').innerHTML=`<p class="usage-empty">Unable to load token usage: ${esc(error.message)}</p>`;
+    $('#usage-pagination').hidden=true;
+  }
 }
 async function loadEvents(more=false) {
   const request=++state.request,sid=state.sid;
@@ -240,3 +268,12 @@ async function init(){try{const config=await json('/api/v1/config');state.featur
 run(init)();
 
 $('#export-raw').onclick=run(()=>busy($('#export-raw'),async()=>{const response=await api(`/api/v1/sessions/${encodeURIComponent(state.sid)}/raw`);download(await response.arrayBuffer(),'rollout.jsonl');}));
+$('#usage-model').onchange=run(()=>loadUsage());
+$('#usage-refresh').onclick=run(()=>busy($('#usage-refresh'),()=>loadUsage(false,true)));
+$('#usage-more').onclick=run(()=>busy($('#usage-more'),()=>loadUsage(true)));
+$('#usage-export').onclick=run(()=>busy($('#usage-export'),async()=>{
+  if(!usageReport?.archive)return;
+  const params=new URLSearchParams({model_override:usageReport.model_override||'',import_id:usageReport.archive.id});
+  const response=await api(`/api/v1/sessions/${encodeURIComponent(state.sid)}/usage/export?${params}`);
+  download(await response.text(),'agentboard-usage.json','application/json');
+}));

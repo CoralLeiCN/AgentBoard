@@ -13,6 +13,7 @@ from .otlp import session_identity
 from .parallel import NOTE as PARALLEL_NOTE
 from .parallel import parallel_groups
 from .timestamps import format_timestamp, timestamp_ns
+from .usage import analyze as analyze_usage
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -472,6 +473,25 @@ class Store:
                 "SELECT content FROM raw_lines WHERE import_id=? ORDER BY sequence", (archive["id"],)
             ):
                 yield row["content"]
+
+    def usage(self, sid, model_override="", import_id=None):
+        self.get_session(sid)
+        with self.connect() as db:
+            db.execute("BEGIN")
+            archive = db.execute(
+                "SELECT * FROM raw_imports WHERE session_id=? AND (? IS NULL OR id=?) ORDER BY id DESC LIMIT 1",
+                (sid, import_id, import_id),
+            ).fetchone()
+            if archive is None and import_id is not None:
+                raise KeyError("Raw archive not found for this session")
+            lines = db.execute("SELECT content FROM raw_lines WHERE import_id=? ORDER BY sequence",
+                               (archive["id"],)) if archive else []
+            report = analyze_usage((row["content"] for row in lines), model_override)
+        report["archive"] = dict(archive) if archive else None
+        report["session_id"] = sid
+        if not archive:
+            report["note"] = "Token usage unavailable. Import the original Codex rollout to archive usage evidence."
+        return report
 
     def event_raw(self, sid, event_id):
         """Return exact source lines bound to this stored event, never the latest archive by guesswork."""
