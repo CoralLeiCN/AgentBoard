@@ -22,15 +22,12 @@ CASES = (
 
 @pytest.mark.e2e
 @pytest.mark.parametrize("case,prompt,expected", CASES, ids=[case[0] for case in CASES])
-def test_live_responses_classification(tmp_path, case, prompt, expected):
-    base_url = os.getenv("AGENTBOARD_E2E_CLASSIFICATION_BASE_URL", "")
-    if not base_url:
-        pytest.skip("Set AGENTBOARD_E2E_CLASSIFICATION_BASE_URL to run the live classification test")
+def test_live_responses_classification(tmp_path, private_endpoint, case, prompt, expected):
+    endpoint = private_endpoint("AGENTBOARD_E2E_CLASSIFICATION")
     app = create_app(Settings(
         database=str(tmp_path / "classification.db"), features={"classification"}, plugins=(),
-        otlp_enabled=False, model_mode="local", model_api="responses", model_base_url=base_url,
-        model=os.getenv("AGENTBOARD_E2E_CLASSIFICATION_MODEL", ""),
-        model_key=os.getenv("AGENTBOARD_E2E_CLASSIFICATION_API_KEY") or "local", api_token="",
+        otlp_enabled=False, model_mode="local", model_api="responses", model_base_url=endpoint.base_url,
+        model=endpoint.model, model_key=endpoint.api_key or "local", api_token="",
         model_timeout_seconds=int(os.getenv("AGENTBOARD_E2E_CLASSIFICATION_TIMEOUT_SECONDS", "120")),
     ))
     if prompt is None:

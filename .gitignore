@@ -227,3 +227,10 @@ __marimo__/
 
 # Isolated local development datasets and snapshot manifests.
 .agentboard/
+*.db-journal
+*.sqlite-journal
+*.sqlite3
+*.sqlite3-*
+*.snapshot.json
+.env.*
+.DS_Store

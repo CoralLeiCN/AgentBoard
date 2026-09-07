@@ -95,6 +95,50 @@ def test_codex_logs_and_resource_correlation(client, imported):
     assert {g["source"] for g in groups} == {"codex_jsonl", "otlp_log"}
 
 
+@pytest.mark.parametrize("binary", [False, True])
+@pytest.mark.parametrize("severity,status", [(9, "ok"), (17, "error")])
+def test_named_log_severity_preserves_records_and_accepts_batch(client, binary, severity, status):
+    payload = ExportLogsServiceRequest()
+    logs = payload.resource_logs.add().scope_logs.add()
+    record = logs.log_records.add(time_unix_nano=1788605000000000000, severity_number=severity)
+    record.attributes.add(key="conversation.id").value.string_value = "synthetic-severity"
+    record.attributes.add(key="event.name").value.string_value = "codex.api_request"
+    if binary:
+        response = client.post("/v1/logs", content=payload.SerializeToString(),
+                               headers={"Content-Type": "application/x-protobuf"})
+    else:
+        from google.protobuf.json_format import MessageToDict
+
+        response = client.post("/v1/logs", json=MessageToDict(payload))
+    assert response.status_code == 200, response.text
+    event = client.get("/api/v1/sessions/synthetic-severity/events").json()["items"][0]
+    assert event["kind"] == "llm" and event["status"] == status
+    expected = "SEVERITY_NUMBER_INFO" if severity == 9 else "SEVERITY_NUMBER_ERROR"
+    assert event["attributes"]["otel"]["record"]["severityNumber"] == expected
+
+
+def test_codex_semantic_log_name_overrides_tracing_source_location(client):
+    payload = ExportLogsServiceRequest()
+    logs = payload.resource_logs.add().scope_logs.add()
+    for name in ("codex.api_request", "codex.tool_result", "codex.sse_event"):
+        record = logs.log_records.add(
+            observed_time_unix_nano=1788605000000000000, severity_number=9,
+            event_name="event otel/src/events/example.rs:10",
+        )
+        record.attributes.add(key="conversation.id").value.string_value = "synthetic-tracing-name"
+        record.attributes.add(key="event.name").value.string_value = name
+        record.attributes.add(key="duration_ms").value.string_value = "120"
+    response = client.post("/v1/logs", content=payload.SerializeToString(),
+                           headers={"Content-Type": "application/x-protobuf"})
+    assert response.status_code == 200, response.text
+    events = client.get("/api/v1/sessions/synthetic-tracing-name/events").json()["items"]
+    assert [event["name"] for event in events] == ["codex.api_request", "codex.tool_result", "codex.sse_event"]
+    assert [event["kind"] for event in events] == ["llm", "tool", "event"]
+    assert [event["timing"] for event in events] == ["measured", "measured", "unknown"]
+    assert all(event["attributes"]["otel"]["record"]["eventName"] ==
+               "event otel/src/events/example.rs:10" for event in events)
+
+
 @pytest.mark.parametrize("bad", ["", "AA==", "0" * 32, "g" * 32])
 def test_invalid_trace_ids_reject_batch(client, bad):
     payload = trace_payload()

@@ -527,7 +527,7 @@ For existing databases, back up SQLite and run `agentboard repair-otlp-sessions`
 
 | Rule | Trace | Log |
 | --- | --- | --- |
-| Name | First truthy record name, eventName, flattened `event.name`, string body, otherwise `Log event`. | Same. |
+| Name | First truthy record name, eventName, flattened `event.name`, string body; otherwise `Log event`. | Same fallback, except a flattened `event.name` beginning `codex.` takes priority over `eventName` (which Rust tracing may fill with a source location). |
 | Timestamp | `startTimeUnixNano`; end from `endTimeUnixNano`. | `timeUnixNano`, falling back to `observedTimeUnixNano` when absent. The implementation gives `startTimeUnixNano` precedence if present. |
 | Validation | Positive start; valid nonzero trace/span IDs required; end must not precede start. | Positive timestamp; optional IDs validated when present. |
 | Tool category | Truthy `gen_ai.tool.name`, operation `execute_tool`, or name containing `tool`. | Name exactly `codex.tool_result`. |
@@ -538,11 +538,13 @@ For existing databases, back up SQLite and run `agentboard repair-otlp-sessions`
 
 Log duration chooses `duration_ms`, otherwise `duration`, and **assumes milliseconds for either name**. It converts through `float`, then `int(duration × 1e6)`. A bare `duration` attribute without a verified unit must not be treated as reliable time; sub-nanosecond/floating-point rounding is possible. Source epoch timestamp conversion itself remains exact.
 
-Blocking input classification uses `gen_ai.tool.name`, otherwise `tool_name`, otherwise event name. A matching tool log or any matching trace becomes `user_wait`, with application `wait_type` and `basis`. Status is error for span error code, flattened `success=false`, or severity number ≥17; otherwise defaults to ok. User text is flattened prompt string; other text is string body or empty. Turn ID comes from `turn.id`.
+Blocking input classification uses `gen_ai.tool.name`, otherwise `tool_name`, otherwise event name. A matching tool log or any matching trace becomes `user_wait`, with application `wait_type` and `basis`. Status is error for span error code, flattened `success=false`, or severity number ≥17; otherwise defaults to ok. Named protobuf severities are resolved through the OTLP enum for this comparison, while the original decoded `severityNumber` remains unchanged in retained evidence (for example, `SEVERITY_NUMBER_INFO` → 9 → ok, `SEVERITY_NUMBER_ERROR` → 17 → error). User text is flattened prompt string; other text is string body or empty. Turn ID comes from `turn.id`.
 
 `attributes.otel` preserves the decoded `record`, `resource`, and `scope`. Flattened attributes coexist with application annotations; reserved keys such as `otel`, and input-wait `basis`/`wait_type`, can override supplied keys in the flattened map. The nested evidence retains their decoded originals. Session agent is `codex` if the service name contains `codex` or event name starts `codex.`, otherwise `otel`; session start is the normalized record/derived start, merged to the earliest stored instant.
 
 One session can contain overlapping trace/log/item/rollout representations. Correlation neither deduplicates them nor makes durations additive.
+
+**Codex log compatibility fix (2026-09-07):** named protobuf severities previously caused HTTP 400 for the whole batch. A generic Rust tracing `eventName` also hid semantic Codex log names, preventing LLM/tool classification. The receiver now resolves severity enums and prefers Codex's explicit `event.name`, preserving both original fields. [Synthetic protobuf/JSON tests](../backend/tests/test_otlp.py) cover INFO/ERROR status, semantic names, duration classification, and retained evidence. Previously rejected batches need redelivery; stored rows are not automatically rewritten. No missing historical logs are reconstructed and no schema change is needed.
 
 ## 10. Model-derived data and continuation
 
