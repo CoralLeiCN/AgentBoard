@@ -211,7 +211,7 @@ def classify_session(store, sid, gateway, max_chars):
     return result
 
 
-def branch_context(store, sid, input_id, replacement, max_chars):
+def branch_context(store, sid, input_id, replacement, max_chars, *, retained_events=None):
     source = store.get_session(sid)
     selected = store.event(sid, input_id)
     if selected["kind"] != "user":
@@ -228,12 +228,15 @@ def branch_context(store, sid, input_id, replacement, max_chars):
             continue
         if e["name"] in ("compacted", "thread_rolled_back"):
             raise ValueError("This history contains compaction/rollback; use native Codex branching")
-        if e["kind"] in ("user", "assistant"):
+        if e["attributes"].get("input_attribution"):
+            # Context/internal messages remain part of the historical transcript,
+            # even though they cannot be selected as human branch inputs.
+            text, role = e["text"], "user"
+        elif e["kind"] in ("user", "assistant"):
             text = e["text"]
             role = "user" if e["kind"] == "user" else "assistant"
-        elif e["kind"] == "tool" or (
-            e["kind"] == "user_wait" and e["attributes"].get("wait_type") == "input_request"
-        ):
+        elif e["kind"] == "tool" or e["attributes"].get("wait_type") == "input_request":
+            # Internal requests are timed events, but their answers still belong in replay.
             text = f"[Recorded tool call: {e['name']}]\n{e['text']}\n{e['attributes'].get('output', '')}"
             role = "assistant"
         else:
@@ -244,12 +247,17 @@ def branch_context(store, sid, input_id, replacement, max_chars):
                 "Replay context exceeds the configured character limit; use native Codex branching"
             )
         history.append({"role": role, "content": text})
+        if retained_events is not None:
+            retained_events.append(e)
     history.append({"role": "user", "content": replacement})
     return source, selected, history
 
 
 def replay_session(store, sid, input_id, replacement, gateway, max_chars):
-    source, selected, history = branch_context(store, sid, input_id, replacement, max_chars)
+    retained_events = []
+    source, selected, history = branch_context(
+        store, sid, input_id, replacement, max_chars, retained_events=retained_events
+    )
     start = format_timestamp(time.time_ns())
     result = gateway.complete(history)
     end = format_timestamp(time.time_ns())
@@ -270,17 +278,24 @@ def replay_session(store, sid, input_id, replacement, gateway, max_chars):
         )
     ]
     for i, message in enumerate(history):
+        retained = retained_events[i] if i < len(retained_events) else None
+        attribution = retained["attributes"].get("input_attribution") if retained else None
+        attributes = {"retained_context": retained is not None}
+        if attribution:
+            attributes.update({key: retained["attributes"][key] for key in (
+                "input_attribution", "transport_role", "input_record_type"
+            ) if key in retained["attributes"]})
         batch.append(
             Event(
                 id=stable_id(branch_id, i),
                 session_id=branch_id,
                 sequence=i,
-                kind="user" if message["role"] == "user" else "assistant",
-                name="User input" if message["role"] == "user" else "Retained context",
+                kind=retained["kind"] if attribution else "user" if message["role"] == "user" else "assistant",
+                name=retained["name"] if attribution else "User input" if message["role"] == "user" else "Retained context",
                 start_time=start,
                 source="replay",
                 text=message["content"],
-                attributes={"retained_context": i < len(history) - 1},
+                attributes=attributes,
             )
         )
     batch.extend(

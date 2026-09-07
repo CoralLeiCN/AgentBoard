@@ -70,15 +70,21 @@ class CodexLineage:
         self.previous_turn = spec("inferred", "No completed turn has been observed; null default.")
         self.anchor = None
         self.waiting = None
+        self.session_input_sources = []
+        self.input_sources = []
 
     def session(self, session, record, line):
         key = "id" if record["payload"].get("id") else "session_id"
         self.session_id = spec("normalized", "Session ID selected from session_meta.", ref(line, f"/payload/{key}"))
+        self.session_input_sources = [ref(line, f"/payload/{key}", "classification")
+                                      for key in ("source", "thread_source", "parent_thread_id")]
         session.field_lineage = {
             **defaults(session.model_dump()),
             **copied(session.metadata, "/metadata", line, "/payload"),
             "/id": self.session_id,
             "/started_at": spec("normalized", "Outer timestamp normalized to UTC RFC 3339.", ref(line, "/timestamp")),
+            "/input_origin": spec("inferred", "Infer internal session origin and parent from recorded source metadata using codex-input-v1; absent internal evidence is unknown.",
+                                  *self.session_input_sources),
         }
 
     def context(self, payload, line):
@@ -137,18 +143,39 @@ class CodexLineage:
             d["/id"]["sources"] += call_spec["sources"]
             d["/name"] = spec("normalized" if "name" in p else "inferred", "Read name; absent key defaults to tool.",
                               ref(line, "/payload/name"))
-            d["/kind"] = spec("inferred", "Blocking request_user_input tools are user_wait; other calls are tool.",
-                              *discriminator, ref(line, "/payload/name"))
+            d["/kind"] = spec("inferred", "Blocking request_user_input calls are user_wait in human scope and event in internal/context scope; other calls are tool.",
+                              *discriminator, ref(line, "/payload/name"),
+                              *self.session_input_sources, *self.input_sources)
             key = "arguments" if "arguments" in p else "input"
             d["/text"] = spec("normalized" if key in p else "inferred", "Python str of arguments, otherwise input; absent defaults to empty.",
                               ref(line, f"/payload/{key}"))
-            if event.kind == "user_wait":
+            if event.attributes.get("wait_type") == "input_request":
                 d["/attributes/wait_type"] = d["/kind"]
-        elif event.kind in ("user", "assistant"):
+                d["/attributes/input_scope"] = d["/kind"]
+        elif event.kind in ("user", "assistant") or event.attributes.get("input_attribution"):
             d["/text"] = self.text(record, line)
             d["/kind"]["sources"].append(ref(line, "/payload/role", "classification"))
-            if event.kind == "user":
+            if event.kind == "user" or event.attributes.get("input_attribution"):
                 d["/attributes/previous_turn_id"] = self.previous_turn
+            attribution = event.attributes.get("input_attribution")
+            if attribution:
+                evidence = [*d["/text"]["sources"], *self.session_input_sources]
+                evidence.extend(ref(line, f"/payload/{key}", "classification")
+                                for key in ("images", "local_images", "audio"))
+                description = spec("inferred", f"codex-input-v1: {attribution['basis']}; human authorship is not verified.",
+                                   *evidence)
+                d["/kind"] = d["/name"] = description
+                for path in leaves(attribution, "/attributes/input_attribution"):
+                    d[path] = description
+                d["/attributes/transport_role"] = spec(
+                    "normalized" if outer == "response_item" else "inferred",
+                    "Recorded payload.role for response items; event-message fallbacks use null.",
+                    ref(line, "/payload/role"),
+                )
+                d["/attributes/input_record_type"] = spec("calculated", "Join outer type and payload.type with a slash.",
+                                                         *discriminator)
+                if attribution["origin"] != "context" or not self.input_sources:
+                    self.input_sources = d["/text"]["sources"]
         elif event.name == "Unmatched tool output":
             d["/text"] = spec("normalized", "Keep string output; serialize other values with json.dumps; missing defaults to empty.",
                               ref(line, "/payload/output"))
@@ -178,8 +205,9 @@ class CodexLineage:
         name_key = "tool" if item.get("tool") else "type"
         d["/name"] = spec("normalized" if name_key in item else "inferred", "First truthy item.tool, otherwise item.type (empty default).",
                           ref(line, f"/payload/item/{name_key}"))
-        d["/kind"] = spec("inferred", "Map item.type to tool or LLM; blocking request_user_input maps to user_wait.",
-                          ref(line, "/payload/item/type"), ref(line, "/payload/item/tool"))
+        d["/kind"] = spec("inferred", "Map item.type to tool or LLM; blocking request_user_input maps to user_wait in human scope and event in internal/context scope.",
+                          ref(line, "/payload/item/type"), ref(line, "/payload/item/tool"),
+                          *self.session_input_sources, *self.input_sources)
         d["/timing"] = spec("inferred", "Recorded item timestamps/duration map to measured timing; LLM items measure streaming only.",
                             ref(line, "/payload/started_at_ms"), ref(line, "/payload/completed_at_ms"))
         d["/start_time"] = spec("normalized", "int(started_at_ms) epoch milliseconds converted to UTC RFC 3339.", ref(line, "/payload/started_at_ms"))
@@ -188,8 +216,9 @@ class CodexLineage:
             d["/start_time"] = spec("calculated", "completed_at_ms * 1,000,000 - (int(secs) * 1,000,000,000 + int(nanos)); absent duration components default to zero; convert nanoseconds to RFC 3339.",
                                    ref(line, "/payload/completed_at_ms"), ref(line, "/payload/item/duration/secs"), ref(line, "/payload/item/duration/nanos"))
         d["/attributes/basis"] = spec("inferred", event.attributes["basis"], *d["/start_time"]["sources"], ref(line, "/payload/item/type"))
-        if event.kind == "user_wait":
+        if event.attributes.get("wait_type") == "input_request":
             d["/attributes/wait_type"] = d["/kind"]
+            d["/attributes/input_scope"] = d["/kind"]
         if "turn_id" in p:
             d["/turn_id"] = spec("normalized", "Explicit completed-item turn ID overrides propagated context.", ref(line, "/payload/turn_id"))
         d["/text"] = spec("normalized" if "command" in item else "inferred", "Null/missing command becomes empty; keep strings; shlex.join string arrays; JSON-serialize other values.", ref(line, "/payload/item/command"))

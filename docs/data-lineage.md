@@ -2,7 +2,9 @@
 
 Reviewed against the working source on **2026-09-07**. Canonical storage schema: **v7**. API: **`/api/v1`**.
 
-How AgentBoard obtains, transforms, stores, and presents data, including interpretation and information loss. This documents **current implementation**, not the upstream Codex format or universal release compatibility. New Codex archives record mapping version `codex-jsonl-v4`; earlier normalized rows have no persisted mapping version.
+Input attribution, wait semantics, and their regression evidence updated **2026-09-07**.
+
+How AgentBoard obtains, transforms, stores, and presents data, including interpretation and information loss. This documents **current implementation**, not the upstream Codex format or universal release compatibility. New Codex archives record mapping version `codex-jsonl-v5`; earlier normalized rows have no persisted mapping version.
 
 Related: [requirements](specification.md), [architecture](architecture.md), [current correctness gaps](data-quality-gaps.md), and [deferred capabilities](backlog.md).
 
@@ -17,7 +19,7 @@ AgentBoard supports exploratory analysis, not independent reproduction of every 
 | Historical tool interval | Time between a call record and a paired result record, with possible clamping. | Pure tool execution time or completion of a process that yielded asynchronously. |
 | Codex item timing | Reported duration or item lifetime. | Full model latency for an output-streaming item. |
 | Between-turn wait | Time from a final/completion marker to the next recognized prompt. | Time actively spent considering a question; necessarily waiting for a human. |
-| `kind=user` | A record matched a user-message mapping. | Verified human authorship. |
+| `kind=user` | A record matched a user-message mapping; v5 rollout inputs exclude recognized context/internal origins. | Verified human authorship. |
 | `status=ok` | No mapped error condition was found, or the adapter used its default. | Correct task result, successful evaluation, or calibrated confidence. |
 | Classification | A model result, dummy rule, or externally submitted label. | Ground truth or a reproducible evaluation experiment. |
 
@@ -108,9 +110,9 @@ The table describes the normalized view. Every source field and line also surviv
 | Outer / payload type | Mapping | Retention / caveat |
 | --- | --- | --- |
 | `event_msg` / `task_started` | Updates current turn, enables LLM-gap tracking, sets anchor to outer timestamp. | Does not emit a start-marker event. |
-| `response_item` / `message`, role `user` | Emits `kind=user`, name `User input`; may close a wait. | Joins content text. Role is not an authorship check. |
-| `event_msg` / `user_message` | Creates a pending fallback user event unless it matches the remembered user text; may close a wait. | Extracts `payload.message`; prompt mirrors are handled as below. |
-| `response_item` / `function_call` or `custom_tool_call` | Opens pending `tool` or blocking `user_wait`; may first emit an estimated LLM gap. | Name, call key, arguments/input text retained. Event emitted on result or EOF. |
+| `response_item` / `message`, role `user` | Attributes input origin; emits `user` or `event`. Only human-attributed input closes a wait. | Joins content text. Role is not an authorship check. |
+| `event_msg` / `user_message` | Attributes input origin and creates a fallback unless it matches remembered text in that origin; human-attributed input may close a wait. | Extracts `payload.message`; prompt mirrors are handled as below. |
+| `response_item` / `function_call` or `custom_tool_call` | Opens pending `tool`, blocking `user_wait`, or internal input-request `event`; may first emit an estimated LLM gap. | Name, call key, arguments/input text retained. Event emitted on result or EOF. |
 | `response_item` / `function_call_output` or `custom_tool_call_output` | Pairs with pending call by `payload.call_id`, closes interval, attaches output. | Unmatched output emits an `event` named `Unmatched tool output`, `status=incomplete`. |
 | `response_item` / `message` or `reasoning`, excluding user branch and system/developer roles | May emit an LLM gap, then emits `assistant` named `Assistant` or `Reasoning summary`. | Extracts `content`, otherwise `summary`. Missing/empty text can remain empty. |
 | Above with `payload.phase=final_answer` | After emitting, disables LLM-gap tracking and starts a possible wait. | This condition is literal; it is not inferred from the text. |
@@ -127,19 +129,47 @@ All nonblank records undergo JSON/payload/timestamp access before type selection
 
 `content_text` preserves strings or concatenates dictionary elements’ `text` fields with **no separator**. It ignores non-dictionary elements and does not inspect content-part type. Images, audio, encrypted reasoning, rich text-element metadata, and parts without text are not reconstructed.
 
-A response-item user message is emitted immediately. Its text is remembered as `seen_user`. An event-message mirror with exactly equal text is suppressed. A differing event-message prompt becomes `fallback_user`; an older pending fallback is emitted first. A later response-item prompt discards an equal fallback or emits a differing fallback. Remaining fallback is flushed on completion, abort, or EOF. Repeated response-item prompts are retained.
+A response-item user message is emitted immediately. Its text is remembered separately for each attributed origin (`human`, `context`, `internal`). An event-message mirror with exactly equal text in that origin is suppressed. A differing event-message input becomes a pending fallback; an older fallback in the same origin is emitted first. A later response-item input discards an equal fallback or emits a differing fallback. Remaining fallbacks are flushed on completion, abort, or EOF. Repeated response-item prompts are retained. Interleaved context cannot displace the remembered human prompt or its fallback.
 
-**Timing consequence:** a suppressed mirror still moves the active anchor, so the next LLM interval may start at its timestamp rather than the stored user event’s. Matching uses text/state, not source-message identity; it is not general semantic deduplication.
+**Timing consequence:** a suppressed non-context mirror still moves the active anchor, so the next LLM interval may start at its timestamp rather than the stored user event’s. Matching uses text/state, not source-message identity; it is not general semantic deduplication.
 
 For call arguments, the adapter stores `str(payload.arguments)` or, if the key is absent, `str(payload.input)` with an empty default. A structured value here is Python's string representation, not guaranteed JSON. Tool output stays unchanged when already a string; other outputs use `json.dumps`.
 
 Measured item commands use a separate conversion: strings unchanged; all-string arrays use `shlex.join`; null becomes empty; other structures use JSON serialization. No imported command is executed.
 
+
+### 3.4.1 Input attribution
+
+Implemented **2026-09-07** by [input_origin.py](../backend/agentboard/input_origin.py) and the [Codex adapter](../backend/agentboard/adapters/codex.py), mapping `codex-jsonl-v5`. Each normalized input carries `attributes.input_attribution` with `origin`, `method=codex-input-v1`, `basis`, and matching `evidence`. `transport_role` preserves `payload.role` for response items (null for event-message fallbacks); `input_record_type` joins outer/payload type. These fields distinguish normalized transport evidence from inferred authorship.
+
+Rules run in this order:
+
+| Evidence | Attribution / effect |
+| --- | --- |
+| Entire trimmed text comprises complete `<environment_context>` or `<recommended_plugins>` envelopes, or an anchored `# AGENTS.md instructions for …` header with a complete `<INSTRUCTIONS>` envelope and optional context envelopes | `context`; `kind=event`, name `Injected context`. Non-text content parts or nonempty `images`, `local_images`, or `audio` prevent text-only context classification. |
+| `session_meta.payload.source` is `"subagent"` or an object containing `subagent`, or `thread_source` is `"guardian_review"` | `internal`; `kind=event`, name `Internal input`. Context rule takes precedence for context records in those sessions. |
+| Entire text is an unquoted `<subagent_notification …>…</subagent_notification>` envelope, without multimodal input | `internal`, same mapping. |
+| Other recognized user messages | `human`; `kind=user`, name `User input`. Basis explicitly states that human authorship is inferred. Missing session-source metadata alone does not exclude a prompt. |
+
+Fenced/quoted markup, explanatory prose before or after an envelope, malformed wrappers, and standalone `<INSTRUCTIONS>` remain human-attributed absent an internal session source. Text is never stripped or rewritten by attribution. Full raw input retains images/audio; text extraction does not reconstruct them. Unknown context formats and unmarked automation can still be counted as human; a human submitting precisely an unquoted recognized envelope can be misclassified. No universal authorship detector is claimed.
+
+The session API derives `input_origin` from retained metadata, with `origin=internal` or `unknown`. `source.subagent.thread_spawn.parent_thread_id`, falling back to `parent_thread_id`, supplies `parent_session_id`; a parent alone does not prove internal origin. The UI labels internal sessions and links recorded parents, whose sessions may not have been imported. Titles use the first nonempty human-attributed input. Counts, `/inputs`, `kind=user` export, and branch selection share that category; replay retains preceding context/internal input text as user-role model context while preserving its nonhuman event category and attribution in the saved replay, including subsequent branches.
+
+Replay also retains calls marked `attributes.wait_type=input_request`, including internal calls stored as `kind=event`. Their arguments and recorded output become assistant-role transcript text and survive subsequent branches. This applies to new replays from retained history; existing saved replays are not rebuilt.
+
+**Example:** a human turn completes at second 3, an environment envelope arrives at second 4, and the next human-attributed prompt arrives at second 9. The envelope is inspectable but contributes no prompt. The inferred wait is 6,000 ms, from 3 to 9, and still may include idle time.
+
+**Existing data:** explicitly reimport the original rollout with `agentboard --config config/dev.toml import PATH`. No startup migration reparses archives. Matching input IDs/text/start timestamps receive current kind, name, attribution, and source links; conflicting text stays retained. For an imported prefix without conflicting retained raw lines, remove superseded mirrors and recompute estimated LLM gaps/between-turn waits within that prefix, preserving later events. Surviving event IDs and row cursors stay stable; removed duplicate/derived rows do not. Internal blocking request classifications are corrected on matching reimport while preserving completed results during shorter retries. An excluded input-derived title is replaced by the first retained human prompt or `Untitled session`.
+
+Raw versions remain unchanged; the v5 mapping creates a separate archive version even for identical source bytes. Conflicting/reordered source snapshots prevent gap/mirror reconciliation; such histories need a clean import of the chosen source into an isolated database. Reimport the complete rollout for complete metric correction. Old normalized rows without reimport, OTLP input authorship, and older saved replays retain earlier semantics. [Attribution tests](../backend/tests/test_input_origin.py) and [raw-source tests](../backend/tests/test_event_raw.py) cover these boundaries.
+
+**Real-data evidence:** [three redacted excerpts](../examples/fixtures/input-origin-real/README.md) preserve 62 records from actual CLI 0.153.0/0.153.4 user and guardian sessions. Running v3/v4 on the original selected records and redacted copies produced matching per-input origins, counts, and between-turn gaps. The selected cases support environment/AGENTS/plugin-context exclusion and guardian-source classification; notification, `thread_spawn`, and quoted-markup coverage remains synthetic. These examples do not establish overall detection accuracy or human thinking time.
+
 ### 3.5 Raw archive and export
 
 Implemented **2026-09-06** in [adapter](../backend/agentboard/adapters/codex.py), [storage](../backend/agentboard/store.py), [API](../backend/agentboard/api.py), and [CLI](../backend/agentboard/cli.py). Accepted UTF-8 Codex JSONL imports retain every input line as UTF-8 bytes in `raw_lines`, keyed by archive ID and one-based physical `sequence`. This includes blank lines, original timestamp spelling, whitespace, line endings, absent final newline, unknown fields/types, system/developer messages, content parts, and encrypted content. The archive does not decrypt, execute, redact, or normalize these bytes. HTTP gzip input archives the decompressed JSONL, not its compressed transport envelope. Invalid imports roll back both archive and normalized changes.
 
-`raw_imports` records session ID, SHA-256 of concatenated source bytes, byte/line counts, archive creation time, and mapping version `codex-jsonl-v4`. Identical session/hash/mapping imports reuse an archive ID. Changed, appended, or shortened files create distinct archives and preserve prior versions. Latest means the most recently created distinct archive, not the longest file or most recent identical retry. Each distinct snapshot stores all its lines; storage grows with retained versions and has no automatic pruning.
+`raw_imports` records session ID, SHA-256 of concatenated source bytes, byte/line counts, archive creation time, and mapping version `codex-jsonl-v5`. Identical session/hash/mapping imports reuse an archive ID. Changed, appended, or shortened files create distinct archives and preserve prior versions. Latest means the most recently created distinct archive, not the longest file or most recent identical retry. Each distinct snapshot stores all its lines; storage grows with retained versions and has no automatic pruning.
 
 `GET /api/v1/sessions/{sid}/raw-imports` lists archive metadata. `/raw?import_id=ID` exports one exact version; omitting the ID selects the latest. The UI's **Export raw trace** uses that default. CLI equivalents are `agentboard export SESSION_ID --raw [--import-id ID]`. Existing `/export` and input exports remain normalized. Import responses include `raw_import_ids`. No available source returns an empty version list and a 404 raw export, never reconstructed evidence.
 
@@ -153,7 +183,7 @@ Schema v3 adds the archive tables without reconstructing old evidence. Reimport 
 
 ### 3.6 Per-field Codex lineage
 
-Implemented **2026-09-07**, schema **v7**, mapping **`codex-jsonl-v4`**. [`lineage.py`](../backend/agentboard/lineage.py) follows the rollout parser’s state; [`store.py`](../backend/agentboard/store.py) persists field evidence separately from normalized data. Import-only annotations do not enter normalized exports. The mappings cover every leaf of imported Codex events and session fields, including nested attributes/metadata, nulls, empty containers, defaults, and generated values.
+Implemented **2026-09-07**, schema **v7**, introduced in mapping **`codex-jsonl-v4`**. [`lineage.py`](../backend/agentboard/lineage.py) follows the rollout parser’s state; [`store.py`](../backend/agentboard/store.py) persists field evidence separately from normalized data. Import-only annotations do not enter normalized exports. The mappings cover every leaf of imported Codex events and session fields, including nested attributes/metadata, nulls, empty containers, defaults, and generated values.
 
 | API | Result |
 | --- | --- |
@@ -196,7 +226,7 @@ The trigger is a tool call, assistant message, or reasoning record. The emitted 
 
 | Transition | Anchor/active behavior |
 | --- | --- |
-| Task start or either recognized prompt form | Activate; anchor becomes that timestamp. |
+| Task start or non-context input | Activate; anchor becomes that timestamp. Context inputs leave both unchanged. |
 | Opening a tool call | After any gap emission, clear anchor; put call in pending dictionary. |
 | Tool output | Anchor becomes output timestamp only if active and no calls remain; otherwise null. |
 | Assistant/reasoning | After any gap emission, anchor becomes that timestamp if active. |
@@ -222,11 +252,13 @@ The output is searched for `Wall time: <number> seconds` (case-insensitive). The
 
 At EOF, pending calls emit `status=incomplete`, `end_time=null`, and default `timing=unknown`. Their duration is unavailable, not zero. Reimport can complete those rows.
 
-A name whose last dot-separated component is exactly `request_user_input` maps to `kind=user_wait`, `attributes.wait_type=input_request`. `request_user_input_async` remains a tool: its immediate return does not measure how long a user takes to answer. The blocking lifetime includes delivery overhead and is not proof that a human actively interacted throughout it.
+A name whose last dot-separated component is exactly `request_user_input` maps to `kind=user_wait`, `attributes.wait_type=input_request`. `request_user_input_async` remains a tool: its immediate return does not measure how long a user takes to answer. The blocking lifetime includes delivery overhead and is not proof that a human actively interacted throughout it. For rollout calls/items in a recognized internal session or a turn with only context/internal input, the request is a timed `kind=event` with `wait_type=input_request` and `input_scope=internal`, outside tool/human-wait totals. Other rollout requests use `input_scope=human` as an inferred scope; OTLP classification is unchanged.
 
 ### 4.3 Between-turn waits
 
-`waiting_since` is set by a final-answer marker and then, if present, overwritten by the later task-complete timestamp. The next recognized prompt consumes it. A strictly later prompt emits:
+**Current behavior:** a between-turn `user_wait` is an AgentBoard inference from recorded boundary timestamps, not a Codex record explicitly reporting human waiting. Its Raw JSONL inspector therefore has no actual event record; inspect the completion and next input separately. This differs from a blocking input-request call, whose call/result or item records supply direct operation evidence (§4.2).
+
+`waiting_since` is set by an eligible final-answer marker and then, if present, overwritten by the later task-complete timestamp. Internal sessions and turns with only context/internal input cannot seed it. A completion with missing input evidence retains the older inferred behavior. The next human-attributed prompt consumes it; context does not consume it. A strictly later prompt emits:
 
 ```text
 source = codex_jsonl
@@ -238,9 +270,11 @@ attributes.wait_type = between_turns
 attributes.basis = turn completion to next user prompt; may include idle time
 ```
 
-Calls, assistant/reasoning records, aborts, compaction, and rollback clear the pending wait. Task start alone does not. No wait is emitted before the initial prompt or extended from the final completion to the present. A nonpositive gap emits no wait. Prompt mirrors consume the same wait only once.
+Internal inputs, calls, assistant/reasoning records, aborts, compaction, and rollback clear the pending wait. Task start alone does not. No wait is emitted before the initial prompt or extended from the final completion to the present. A nonpositive gap emits no wait. Prompt mirrors consume the same wait only once.
 
 Current turn ID comes from parser state at emission, usually the upcoming turn when its context/start has already arrived. User events separately carry `attributes.previous_turn_id`, updated only by completion. Neither field proves human authorship.
+
+**Missing waits:** the UI's `— / No recorded waits` means no qualifying normalized wait events exist for the selected source. It does not establish zero human waiting. A single-prompt session without a blocking request has no completed between-turn interval; internal reviewer gaps are excluded; a partial excerpt may omit a required boundary. An unfinished blocking request is instead retained with unknown duration. The [real sample walkthrough](../examples/fixtures/input-origin-real/README.md#inspect-locally) demonstrates one desktop wait and why the CLI/reviewer samples have none. Redaction preserves their timing gaps.
 
 ### 4.4 Parallel tool groups
 
@@ -535,6 +569,8 @@ Existing tests establish these covered boundaries, not universal correctness:
 | Claim | Evidence |
 | --- | --- |
 | Mirror handling, repeated prompts, structured commands, tool completion, parallel union, blocking/async waits | [`tests/test_codex.py`](../backend/tests/test_codex.py) |
+| Human/context/internal attribution, wait eligibility, branch selection, replay retention, and compatible/conflicting reimports | [`tests/test_input_origin.py`](../backend/tests/test_input_origin.py), [`tests/input-origin.test.cjs`](../frontend/tests/input-origin.test.cjs) |
+| Selected real CLI/Desktop/reviewer origins, exact wait boundaries, redaction allowlist, and raw round-trip | [`tests/test_real_input_origins.py`](../backend/tests/test_real_input_origins.py); [sample provenance and limits](../examples/fixtures/input-origin-real/README.md) |
 | Exact nanoseconds, timezone normalization, interval validation, atomic/concurrent migration, cursor preservation | [`tests/test_timestamps.py`](../backend/tests/test_timestamps.py) |
 | Protobuf/JSON identity, source separation, precision, invalid-batch rollback, input-request telemetry | [`tests/test_otlp.py`](../backend/tests/test_otlp.py) |
 | Pagination/export, replay context isolation, dummy labeling, gateway errors, classification validation | [`tests/test_api_models.py`](../backend/tests/test_api_models.py) |
@@ -549,6 +585,6 @@ node --test frontend/tests/*.test.cjs
 uv run --extra dev ruff check backend examples
 ```
 
-Focused temporary-data cases reproduced injected context counted as user input, prompt → completion yielding no LLM span, duplicate call IDs losing the earlier call, and rewritten input text ignored on reimport. These are observations, **not regression guarantees or accepted behavior**; proposed checks are in the [gap register](data-quality-gaps.md).
+Earlier temporary-data audits reproduced injected context counted as user input, prompt → completion yielding no LLM span, duplicate call IDs losing the earlier call, and rewritten input text ignored on reimport. Attribution now has the v5 regression coverage above; the broader timing/identity concerns and remaining attribution limits stay in the [gap register](data-quality-gaps.md). Audit observations alone are not regression guarantees or accepted behavior.
 
 Update mappings, fixtures, and expected values together. Review identity, evidence retention, metric comparability, and backfill: fixing future imports may leave old rows unchanged. Close a gap only after implementing and verifying its acceptance cases.

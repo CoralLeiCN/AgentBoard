@@ -71,7 +71,7 @@ def test_exact_raw_roundtrip_and_metadata(client, compressed):
     assert archive["sha256"] == hashlib.sha256(body).hexdigest()
     assert archive["byte_count"] == len(body)
     assert archive["line_count"] == len(body.splitlines())
-    assert archive["mapping_version"] == "codex-jsonl-v4"
+    assert archive["mapping_version"] == "codex-jsonl-v5"
     assert client.get(path + "/raw").content == body
     meta = client.get(path).json()["metadata"]
     assert meta["thread_source"] == "guardian_review"
@@ -80,7 +80,9 @@ def test_exact_raw_roundtrip_and_metadata(client, compressed):
     assert meta["git"] == {"branch": "example"}
     events = client.get(path + "/events").json()["items"]
     # Physical source line still identifies the triggering record in the archive.
-    user = next(e for e in events if e["kind"] == "user")
+    user = next(e for e in events if e["name"] == "Internal input")
+    assert user["kind"] == "event"
+    assert user["attributes"]["input_attribution"]["origin"] == "internal"
     assert json.loads(body.splitlines()[user["sequence"] - 1])["payload"]["id"] == "message-1"
     for event in events:
         evidence = client.get(path + f'/events/{event["id"]}/raw').json()

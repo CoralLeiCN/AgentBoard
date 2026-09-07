@@ -28,6 +28,7 @@ function describeEvent(event) {
   else if(item) summary='Timing comes from a recorded Codex item lifetime or reported tool duration. LLM item timing covers output streaming, not full model latency.';
   else if(otel) summary='This event was normalized from OpenTelemetry data. A log start time may be calculated from its timestamp and reported duration; classifications and status are assigned by AgentBoard.';
   else if(replay) summary='AgentBoard created this event during conversation replay. Its timestamps are local replay times, not timestamps from the original session.';
+  if(rollout&&attrs.input_attribution) summary=`Input origin: ${attrs.input_attribution.origin} (inferred). ${attrs.input_attribution.basis}. The transport role and original text are retained separately; this classification does not verify human authorship.`;
 
   if(known) {
     let start='Recorded timestamp normalized to UTC RFC 3339.';
@@ -86,12 +87,13 @@ function describeEvent(event) {
   for(const [key,value] of Object.entries(attrs)) {
     let origin='unknown', explanation='Origin is not described for this attribute.';
     if(rollout) {
-      if(['basis','wait_type','end_time_clamped'].includes(key)) {origin='inferred';explanation='Explanation or classification added by AgentBoard.';}
+      if(['basis','wait_type','end_time_clamped','input_attribution','input_scope'].includes(key)) {origin='inferred';explanation='Explanation or classification added by AgentBoard. Input attribution retains the rule and matching evidence; human authorship is not verified.';}
+      else if(['transport_role','input_record_type'].includes(key)) {origin='normalized';explanation='Recorded role or record type, kept separately from attributed input origin. Event-message fallbacks have no recorded role.';}
       else if(['call_id','output','info','previous_turn_id'].includes(key)) {origin='normalized';explanation=key==='previous_turn_id'?'Recorded ID propagated from the preceding completed turn.':'Extracted from rollout payloads; structured outputs may be serialized as text.';}
       else if(key==='reported_wall_time_ms') {origin='calculated';explanation='Parsed from the tool output’s Wall time text and converted from seconds to milliseconds.';}
     } else if(item) {
       if(key==='item') {origin='normalized';explanation='Preserved payload.item object. This is only the item, not the full rollout record.';}
-      else if(['basis','wait_type','end_time_clamped'].includes(key)) {origin='inferred';explanation='Explanation or classification added by AgentBoard.';}
+      else if(['basis','wait_type','end_time_clamped','input_scope'].includes(key)) {origin='inferred';explanation='Explanation or classification added by AgentBoard.';}
     } else if(otel) {
       origin='normalized';explanation=key==='otel'?'Preserved decoded record, resource, and scope data; not the original wire bytes.':'Attribute decoded from telemetry resource or record data.';
       if(event.kind==='user_wait'&&['basis','wait_type'].includes(key)) {origin='inferred';explanation='Input-request classification added by AgentBoard.';}

@@ -1,0 +1,780 @@
+{
+  "kind": "redacted_real_input_origin_excerpts",
+  "purpose": "Source-backed existence and regression examples; not a representative accuracy benchmark.",
+  "discovery": {
+    "scope": "82 local rollout files starting September 1\u20136, 2026; later files excluded to avoid this implementation task.",
+    "rollout_files_scanned": 82,
+    "files_with_explicit_internal_session_metadata": 47,
+    "labels_are_not_manual_ground_truth": true,
+    "subagent_notification_envelope_matches": 0
+  },
+  "baseline_mapping": "codex-jsonl-v3",
+  "current_mapping": "codex-jsonl-v5",
+  "redaction": [
+    "All original natural-language text replaced by numbered placeholders, except recognized context delimiters and the AGENTS.md header syntax.",
+    "AGENTS.md header paths replaced with /example/workspace; context bodies and plugin listings removed.",
+    "Every retained identifier replaced consistently; unselected parent sessions have opaque placeholder IDs.",
+    "Outer timestamps and retained item timestamps shifted by the same whole-millisecond offset per source; exact intervals preserved. The displayed year 2000 is artificial.",
+    "Only allowlisted record fields retained. Instructions, encrypted reasoning, repository metadata, paths, account/credential/quota fields, world state, settings, model configuration, token counts, and content annotations omitted.",
+    "Record order, selected original ordinals, roles, source flags, content-part types/counts, mirror equality, and lifecycle boundaries preserved.",
+    "JSON reserialized. Raw export is exact for these redacted excerpts, not the originals.",
+    "Private source paths, original hashes/timestamps, and identifier maps remain only in ignored local provenance."
+  ],
+  "cases": [
+    {
+      "case": "cli",
+      "file": "cli.jsonl",
+      "session_id": "real-input-cli",
+      "source_cli_version": "0.153.0",
+      "selection_reason": "Complete short CLI session: environment context preceding a user prompt.",
+      "contiguous_original_line_windows": [
+        [
+          1,
+          17
+        ]
+      ],
+      "record_count": 17,
+      "sha256": "a875dba339d8557f789c14a9775514a774d5b8e7d231099db77ef701e30c8cf9",
+      "baseline": {
+        "user_count": 2,
+        "attributed_inputs": {},
+        "between_turn_wait_ms": []
+      },
+      "current": {
+        "user_count": 1,
+        "attributed_inputs": {
+          "context": 1,
+          "human": 1
+        },
+        "between_turn_wait_ms": []
+      },
+      "lines": [
+        {
+          "excerpt_line": 1,
+          "original_line": 1,
+          "original_ordinal": 0,
+          "omitted_paths": [
+            "/payload/timestamp",
+            "/payload/cwd",
+            "/payload/originator",
+            "/payload/model_provider",
+            "/payload/base_instructions",
+            "/payload/history_mode",
+            "/payload/context_window"
+          ]
+        },
+        {
+          "excerpt_line": 2,
+          "original_line": 2,
+          "original_ordinal": 1,
+          "omitted_paths": [
+            "/payload/started_at",
+            "/payload/model_context_window",
+            "/payload/collaboration_mode_kind"
+          ]
+        },
+        {
+          "excerpt_line": 3,
+          "original_line": 3,
+          "original_ordinal": 2,
+          "omitted_paths": [
+            "/payload/internal_chat_message_metadata_passthrough/create_time",
+            "/payload/internal_chat_message_metadata_passthrough/content_item_kinds"
+          ]
+        },
+        {
+          "excerpt_line": 4,
+          "original_line": 4,
+          "original_ordinal": 3,
+          "omitted_paths": [
+            "/payload/internal_chat_message_metadata_passthrough/create_time",
+            "/payload/internal_chat_message_metadata_passthrough/content_item_kinds"
+          ]
+        },
+        {
+          "excerpt_line": 5,
+          "original_line": 5,
+          "original_ordinal": 4,
+          "omitted_paths": [
+            "/payload/internal_chat_message_metadata_passthrough/create_time",
+            "/payload/internal_chat_message_metadata_passthrough/content_item_kinds"
+          ]
+        },
+        {
+          "excerpt_line": 6,
+          "original_line": 6,
+          "original_ordinal": 5,
+          "omitted_paths": [
+            "/payload/internal_chat_message_metadata_passthrough/create_time",
+            "/payload/internal_chat_message_metadata_passthrough/content_item_kinds"
+          ]
+        },
+        {
+          "excerpt_line": 7,
+          "original_line": 7,
+          "original_ordinal": 6,
+          "omitted_paths": [
+            "/payload/full",
+            "/payload/state"
+          ]
+        },
+        {
+          "excerpt_line": 8,
+          "original_line": 8,
+          "original_ordinal": 7,
+          "omitted_paths": [
+            "/payload/cwd",
+            "/payload/workspace_roots",
+            "/payload/current_date",
+            "/payload/timezone",
+            "/payload/approval_policy",
+            "/payload/approvals_reviewer",
+            "/payload/sandbox_policy",
+            "/payload/permission_profile",
+            "/payload/active_permission_profile",
+            "/payload/file_system_sandbox_policy",
+            "/payload/model",
+            "/payload/comp_hash",
+            "/payload/personality",
+            "/payload/collaboration_mode",
+            "/payload/multi_agent_version",
+            "/payload/realtime_active",
+            "/payload/effort",
+            "/payload/summary"
+          ]
+        },
+        {
+          "excerpt_line": 9,
+          "original_line": 9,
+          "original_ordinal": 8,
+          "omitted_paths": [
+            "/payload/internal_chat_message_metadata_passthrough/create_time",
+            "/payload/internal_chat_message_metadata_passthrough/content_item_kinds"
+          ]
+        },
+        {
+          "excerpt_line": 10,
+          "original_line": 10,
+          "original_ordinal": 9,
+          "omitted_paths": []
+        },
+        {
+          "excerpt_line": 11,
+          "original_line": 11,
+          "original_ordinal": 10,
+          "omitted_paths": [
+            "/payload/item/summary_text",
+            "/payload/item/raw_content"
+          ]
+        },
+        {
+          "excerpt_line": 12,
+          "original_line": 12,
+          "original_ordinal": 11,
+          "omitted_paths": [
+            "/payload/encrypted_content"
+          ]
+        },
+        {
+          "excerpt_line": 13,
+          "original_line": 13,
+          "original_ordinal": 12,
+          "omitted_paths": []
+        },
+        {
+          "excerpt_line": 14,
+          "original_line": 14,
+          "original_ordinal": 13,
+          "omitted_paths": [
+            "/payload/internal_chat_message_metadata_passthrough/create_time",
+            "/payload/internal_chat_message_metadata_passthrough/content_item_kinds"
+          ]
+        },
+        {
+          "excerpt_line": 15,
+          "original_line": 15,
+          "original_ordinal": 14,
+          "omitted_paths": [
+            "/payload/response_id",
+            "/payload/usage",
+            "/payload/turn_token_usage",
+            "/payload/thread_token_usage"
+          ]
+        },
+        {
+          "excerpt_line": 16,
+          "original_line": 16,
+          "original_ordinal": 15,
+          "omitted_paths": [
+            "/payload/info",
+            "/payload/rate_limits"
+          ]
+        },
+        {
+          "excerpt_line": 17,
+          "original_line": 17,
+          "original_ordinal": 16,
+          "omitted_paths": [
+            "/payload/started_at",
+            "/payload/completed_at",
+            "/payload/duration_ms",
+            "/payload/time_to_first_token_ms"
+          ]
+        }
+      ]
+    },
+    {
+      "case": "desktop",
+      "file": "desktop.jsonl",
+      "session_id": "real-input-desktop",
+      "source_cli_version": "0.153.4",
+      "selection_reason": "Desktop context bundle and a contiguous completion/context/next-prompt boundary.",
+      "contiguous_original_line_windows": [
+        [
+          1,
+          10
+        ],
+        [
+          91,
+          98
+        ]
+      ],
+      "record_count": 18,
+      "sha256": "8c4c535044b1b5fb452b0486fbb517a9090783b31b356f95e2b2e91213490832",
+      "baseline": {
+        "user_count": 4,
+        "attributed_inputs": {},
+        "between_turn_wait_ms": [
+          2716373
+        ]
+      },
+      "current": {
+        "user_count": 2,
+        "attributed_inputs": {
+          "context": 2,
+          "human": 2
+        },
+        "between_turn_wait_ms": [
+          2716391
+        ]
+      },
+      "lines": [
+        {
+          "excerpt_line": 1,
+          "original_line": 1,
+          "original_ordinal": 0,
+          "omitted_paths": [
+            "/payload/timestamp",
+            "/payload/cwd",
+            "/payload/originator",
+            "/payload/model_provider",
+            "/payload/base_instructions",
+            "/payload/history_mode",
+            "/payload/context_window",
+            "/payload/git"
+          ]
+        },
+        {
+          "excerpt_line": 2,
+          "original_line": 2,
+          "original_ordinal": 1,
+          "omitted_paths": [
+            "/payload/started_at",
+            "/payload/model_context_window",
+            "/payload/collaboration_mode_kind"
+          ]
+        },
+        {
+          "excerpt_line": 3,
+          "original_line": 3,
+          "original_ordinal": 2,
+          "omitted_paths": [
+            "/payload/internal_chat_message_metadata_passthrough/create_time",
+            "/payload/internal_chat_message_metadata_passthrough/content_item_kinds"
+          ]
+        },
+        {
+          "excerpt_line": 4,
+          "original_line": 4,
+          "original_ordinal": 3,
+          "omitted_paths": [
+            "/payload/internal_chat_message_metadata_passthrough/create_time",
+            "/payload/internal_chat_message_metadata_passthrough/content_item_kinds"
+          ]
+        },
+        {
+          "excerpt_line": 5,
+          "original_line": 5,
+          "original_ordinal": 4,
+          "omitted_paths": [
+            "/payload/internal_chat_message_metadata_passthrough/create_time",
+            "/payload/internal_chat_message_metadata_passthrough/content_item_kinds"
+          ]
+        },
+        {
+          "excerpt_line": 6,
+          "original_line": 6,
+          "original_ordinal": 5,
+          "omitted_paths": [
+            "/payload/internal_chat_message_metadata_passthrough/create_time",
+            "/payload/internal_chat_message_metadata_passthrough/content_item_kinds"
+          ]
+        },
+        {
+          "excerpt_line": 7,
+          "original_line": 7,
+          "original_ordinal": 6,
+          "omitted_paths": [
+            "/payload/full",
+            "/payload/state"
+          ]
+        },
+        {
+          "excerpt_line": 8,
+          "original_line": 8,
+          "original_ordinal": 7,
+          "omitted_paths": [
+            "/payload/cwd",
+            "/payload/workspace_roots",
+            "/payload/current_date",
+            "/payload/timezone",
+            "/payload/approval_policy",
+            "/payload/approvals_reviewer",
+            "/payload/sandbox_policy",
+            "/payload/permission_profile",
+            "/payload/active_permission_profile",
+            "/payload/file_system_sandbox_policy",
+            "/payload/model",
+            "/payload/comp_hash",
+            "/payload/personality",
+            "/payload/collaboration_mode",
+            "/payload/multi_agent_version",
+            "/payload/realtime_active",
+            "/payload/effort",
+            "/payload/summary"
+          ]
+        },
+        {
+          "excerpt_line": 9,
+          "original_line": 9,
+          "original_ordinal": 8,
+          "omitted_paths": [
+            "/payload/internal_chat_message_metadata_passthrough/create_time",
+            "/payload/internal_chat_message_metadata_passthrough/content_item_kinds"
+          ]
+        },
+        {
+          "excerpt_line": 10,
+          "original_line": 10,
+          "original_ordinal": 9,
+          "omitted_paths": []
+        },
+        {
+          "excerpt_line": 11,
+          "original_line": 91,
+          "original_ordinal": 90,
+          "omitted_paths": [
+            "/payload/started_at",
+            "/payload/completed_at",
+            "/payload/duration_ms",
+            "/payload/time_to_first_token_ms"
+          ]
+        },
+        {
+          "excerpt_line": 12,
+          "original_line": 92,
+          "original_ordinal": 91,
+          "omitted_paths": [
+            "/payload/thread_settings"
+          ]
+        },
+        {
+          "excerpt_line": 13,
+          "original_line": 93,
+          "original_ordinal": 92,
+          "omitted_paths": [
+            "/payload/started_at",
+            "/payload/model_context_window",
+            "/payload/collaboration_mode_kind"
+          ]
+        },
+        {
+          "excerpt_line": 14,
+          "original_line": 94,
+          "original_ordinal": 93,
+          "omitted_paths": [
+            "/payload/internal_chat_message_metadata_passthrough/create_time",
+            "/payload/internal_chat_message_metadata_passthrough/content_item_kinds"
+          ]
+        },
+        {
+          "excerpt_line": 15,
+          "original_line": 95,
+          "original_ordinal": 94,
+          "omitted_paths": [
+            "/payload/full",
+            "/payload/state"
+          ]
+        },
+        {
+          "excerpt_line": 16,
+          "original_line": 96,
+          "original_ordinal": 95,
+          "omitted_paths": [
+            "/payload/cwd",
+            "/payload/workspace_roots",
+            "/payload/current_date",
+            "/payload/timezone",
+            "/payload/approval_policy",
+            "/payload/approvals_reviewer",
+            "/payload/sandbox_policy",
+            "/payload/permission_profile",
+            "/payload/active_permission_profile",
+            "/payload/file_system_sandbox_policy",
+            "/payload/model",
+            "/payload/comp_hash",
+            "/payload/personality",
+            "/payload/collaboration_mode",
+            "/payload/multi_agent_version",
+            "/payload/realtime_active",
+            "/payload/effort",
+            "/payload/summary"
+          ]
+        },
+        {
+          "excerpt_line": 17,
+          "original_line": 97,
+          "original_ordinal": 96,
+          "omitted_paths": [
+            "/payload/internal_chat_message_metadata_passthrough/create_time",
+            "/payload/internal_chat_message_metadata_passthrough/content_item_kinds"
+          ]
+        },
+        {
+          "excerpt_line": 18,
+          "original_line": 98,
+          "original_ordinal": 97,
+          "omitted_paths": []
+        }
+      ]
+    },
+    {
+      "case": "reviewer",
+      "file": "reviewer.jsonl",
+      "session_id": "real-input-reviewer",
+      "source_cli_version": "0.153.4",
+      "selection_reason": "First two complete automated guardian review turns, including fragmented request mirrors.",
+      "contiguous_original_line_windows": [
+        [
+          1,
+          27
+        ]
+      ],
+      "record_count": 27,
+      "sha256": "050d64d35d75d5ff4c8f0342a26b103d672310b68b2477f3b288c31849a60783",
+      "baseline": {
+        "user_count": 3,
+        "attributed_inputs": {},
+        "between_turn_wait_ms": [
+          1538183
+        ]
+      },
+      "current": {
+        "user_count": 0,
+        "attributed_inputs": {
+          "context": 1,
+          "internal": 2
+        },
+        "between_turn_wait_ms": []
+      },
+      "lines": [
+        {
+          "excerpt_line": 1,
+          "original_line": 1,
+          "original_ordinal": null,
+          "omitted_paths": [
+            "/payload/timestamp",
+            "/payload/cwd",
+            "/payload/originator",
+            "/payload/model_provider",
+            "/payload/base_instructions",
+            "/payload/history_mode",
+            "/payload/multi_agent_version",
+            "/payload/context_window",
+            "/payload/git"
+          ]
+        },
+        {
+          "excerpt_line": 2,
+          "original_line": 2,
+          "original_ordinal": null,
+          "omitted_paths": [
+            "/payload/started_at",
+            "/payload/model_context_window",
+            "/payload/collaboration_mode_kind"
+          ]
+        },
+        {
+          "excerpt_line": 3,
+          "original_line": 3,
+          "original_ordinal": null,
+          "omitted_paths": [
+            "/payload/internal_chat_message_metadata_passthrough/create_time",
+            "/payload/internal_chat_message_metadata_passthrough/content_item_kinds"
+          ]
+        },
+        {
+          "excerpt_line": 4,
+          "original_line": 4,
+          "original_ordinal": null,
+          "omitted_paths": [
+            "/payload/internal_chat_message_metadata_passthrough/create_time",
+            "/payload/internal_chat_message_metadata_passthrough/content_item_kinds"
+          ]
+        },
+        {
+          "excerpt_line": 5,
+          "original_line": 5,
+          "original_ordinal": null,
+          "omitted_paths": [
+            "/payload/full",
+            "/payload/state"
+          ]
+        },
+        {
+          "excerpt_line": 6,
+          "original_line": 6,
+          "original_ordinal": null,
+          "omitted_paths": [
+            "/payload/cwd",
+            "/payload/workspace_roots",
+            "/payload/current_date",
+            "/payload/timezone",
+            "/payload/approval_policy",
+            "/payload/approvals_reviewer",
+            "/payload/sandbox_policy",
+            "/payload/permission_profile",
+            "/payload/file_system_sandbox_policy",
+            "/payload/model",
+            "/payload/comp_hash",
+            "/payload/personality",
+            "/payload/collaboration_mode",
+            "/payload/multi_agent_version",
+            "/payload/realtime_active",
+            "/payload/effort",
+            "/payload/summary"
+          ]
+        },
+        {
+          "excerpt_line": 7,
+          "original_line": 7,
+          "original_ordinal": null,
+          "omitted_paths": [
+            "/payload/internal_chat_message_metadata_passthrough/create_time",
+            "/payload/internal_chat_message_metadata_passthrough/content_item_kinds"
+          ]
+        },
+        {
+          "excerpt_line": 8,
+          "original_line": 8,
+          "original_ordinal": null,
+          "omitted_paths": []
+        },
+        {
+          "excerpt_line": 9,
+          "original_line": 9,
+          "original_ordinal": null,
+          "omitted_paths": [
+            "/payload/encrypted_content"
+          ]
+        },
+        {
+          "excerpt_line": 10,
+          "original_line": 10,
+          "original_ordinal": null,
+          "omitted_paths": [
+            "/payload/memory_citation"
+          ]
+        },
+        {
+          "excerpt_line": 11,
+          "original_line": 11,
+          "original_ordinal": null,
+          "omitted_paths": [
+            "/payload/internal_chat_message_metadata_passthrough/content_item_kinds"
+          ]
+        },
+        {
+          "excerpt_line": 12,
+          "original_line": 12,
+          "original_ordinal": null,
+          "omitted_paths": [
+            "/payload/response_id",
+            "/payload/usage",
+            "/payload/turn_token_usage",
+            "/payload/thread_token_usage"
+          ]
+        },
+        {
+          "excerpt_line": 13,
+          "original_line": 13,
+          "original_ordinal": null,
+          "omitted_paths": [
+            "/payload/info",
+            "/payload/rate_limits"
+          ]
+        },
+        {
+          "excerpt_line": 14,
+          "original_line": 14,
+          "original_ordinal": null,
+          "omitted_paths": [
+            "/payload/started_at",
+            "/payload/completed_at",
+            "/payload/duration_ms",
+            "/payload/time_to_first_token_ms"
+          ]
+        },
+        {
+          "excerpt_line": 15,
+          "original_line": 15,
+          "original_ordinal": null,
+          "omitted_paths": [
+            "/payload/internal_chat_message_metadata_passthrough/create_time",
+            "/payload/internal_chat_message_metadata_passthrough/content_item_kinds"
+          ]
+        },
+        {
+          "excerpt_line": 16,
+          "original_line": 16,
+          "original_ordinal": null,
+          "omitted_paths": [
+            "/payload/internal_chat_message_metadata_passthrough/create_time",
+            "/payload/internal_chat_message_metadata_passthrough/content_item_kinds"
+          ]
+        },
+        {
+          "excerpt_line": 17,
+          "original_line": 17,
+          "original_ordinal": null,
+          "omitted_paths": [
+            "/payload/thread_settings"
+          ]
+        },
+        {
+          "excerpt_line": 18,
+          "original_line": 18,
+          "original_ordinal": null,
+          "omitted_paths": [
+            "/payload/started_at",
+            "/payload/model_context_window",
+            "/payload/collaboration_mode_kind"
+          ]
+        },
+        {
+          "excerpt_line": 19,
+          "original_line": 19,
+          "original_ordinal": null,
+          "omitted_paths": [
+            "/payload/cwd",
+            "/payload/workspace_roots",
+            "/payload/current_date",
+            "/payload/timezone",
+            "/payload/approval_policy",
+            "/payload/approvals_reviewer",
+            "/payload/sandbox_policy",
+            "/payload/permission_profile",
+            "/payload/file_system_sandbox_policy",
+            "/payload/model",
+            "/payload/comp_hash",
+            "/payload/personality",
+            "/payload/collaboration_mode",
+            "/payload/multi_agent_version",
+            "/payload/realtime_active",
+            "/payload/effort",
+            "/payload/summary"
+          ]
+        },
+        {
+          "excerpt_line": 20,
+          "original_line": 20,
+          "original_ordinal": null,
+          "omitted_paths": [
+            "/payload/internal_chat_message_metadata_passthrough/create_time",
+            "/payload/internal_chat_message_metadata_passthrough/content_item_kinds"
+          ]
+        },
+        {
+          "excerpt_line": 21,
+          "original_line": 21,
+          "original_ordinal": null,
+          "omitted_paths": []
+        },
+        {
+          "excerpt_line": 22,
+          "original_line": 22,
+          "original_ordinal": null,
+          "omitted_paths": [
+            "/payload/encrypted_content"
+          ]
+        },
+        {
+          "excerpt_line": 23,
+          "original_line": 23,
+          "original_ordinal": null,
+          "omitted_paths": [
+            "/payload/memory_citation"
+          ]
+        },
+        {
+          "excerpt_line": 24,
+          "original_line": 24,
+          "original_ordinal": null,
+          "omitted_paths": [
+            "/payload/internal_chat_message_metadata_passthrough/content_item_kinds"
+          ]
+        },
+        {
+          "excerpt_line": 25,
+          "original_line": 25,
+          "original_ordinal": null,
+          "omitted_paths": [
+            "/payload/response_id",
+            "/payload/usage",
+            "/payload/turn_token_usage",
+            "/payload/thread_token_usage"
+          ]
+        },
+        {
+          "excerpt_line": 26,
+          "original_line": 26,
+          "original_ordinal": null,
+          "omitted_paths": [
+            "/payload/info",
+            "/payload/rate_limits"
+          ]
+        },
+        {
+          "excerpt_line": 27,
+          "original_line": 27,
+          "original_ordinal": null,
+          "omitted_paths": [
+            "/payload/started_at",
+            "/payload/completed_at",
+            "/payload/duration_ms",
+            "/payload/time_to_first_token_ms"
+          ]
+        }
+      ]
+    }
+  ],
+  "baseline_code_ref": "0593d42:backend/agentboard/adapters/codex.py",
+  "verification": {
+    "original_and_redacted_match": [
+      "per-input origin",
+      "baseline prompt count and between-turn wait durations",
+      "current prompt count, origin counts, and between-turn wait durations"
+    ],
+    "reviewed_payload_text": "Only numbered redaction placeholders, original recognized context delimiters, and an AGENTS.md header with a replacement path remain."
+  }
+}
