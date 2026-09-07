@@ -74,13 +74,22 @@ def test_worktree_copies_are_independent_and_reruns_preserve_changes(worktrees):
     assert manifest["counts_at_creation"]["sessions"] == 1
 
 
-def test_missing_baseline_fails_without_creating_database(worktrees):
+def test_missing_baseline_skips_snapshot_and_can_be_added_later(worktrees):
     main, trees = worktrees
+    source = main / ".agentboard/baseline.db"
+    for tree in [main, *trees]:
+        result = setup_dev_data(tree)
+        assert result.returncode == 0, result.stderr
+        assert "Skipping dev database snapshot" in result.stdout
+        assert not (tree / ".agentboard/dev.db").exists()
+        assert not (tree / ".agentboard/dev.db.snapshot.json").exists()
+    assert not source.exists()
+
+    baseline = Store(str(source))
+    baseline.ingest([Session(id="seed", title="Baseline", started_at="2026-09-07T00:00:00Z")])
     result = setup_dev_data(trees[0])
-    assert result.returncode != 0
-    assert "Snapshot source does not exist" in result.stderr
-    assert not (trees[0] / ".agentboard/dev.db").exists()
-    assert not (main / ".agentboard/baseline.db").exists()
+    assert result.returncode == 0, result.stderr
+    assert Store(str(trees[0] / ".agentboard/dev.db")).get_session("seed")["title"] == "Baseline"
 
 
 def test_invalid_baseline_fails_and_removes_incomplete_copy(worktrees):

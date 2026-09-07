@@ -53,11 +53,11 @@ uv run agentboard --config config/dev.toml --database .agentboard/review-2.db se
 
 ## Automatic worktree data setup
 
-Workflow assumption (2026-09-07): new worktrees for parallel agent work are created from the main checkout. That checkout holds the shared `.agentboard/baseline.db`; each worktree gets its own writable `.agentboard/dev.db`.
+Workflow assumption (2026-09-07): new worktrees for parallel agent work are created from the main checkout. That checkout can hold a shared `.agentboard/baseline.db`; when present, each worktree gets its own writable `.agentboard/dev.db` copy.
 
-Implemented 2026-09-07. The [Codex environment](../.codex/environments/environment.toml) installs dependencies, then snapshots the shared baseline through an inline shell step. Codex runs the selected environment's setup script when creating a worktree; see [local environments](https://learn.chatgpt.com/docs/environments/local-environment).
+Implemented 2026-09-07. The [Codex environment](../.codex/environments/environment.toml) installs dependencies, then snapshots the shared baseline when available through an inline shell step. Codex runs the selected environment's setup script when creating a worktree; see [local environments](https://learn.chatgpt.com/docs/environments/local-environment).
 
-Create `.agentboard/baseline.db` once in the main checkout from an explicitly chosen dataset. For example, from the main checkout, with its dev server stopped:
+To seed worktrees with a shared dataset, create `.agentboard/baseline.db` once in the main checkout from an explicitly chosen dataset. For example, from the main checkout, with its dev server stopped:
 
 ```sh
 uv run agentboard --config config/dev.toml --database .agentboard/baseline.db snapshot --source .agentboard/dev.db
@@ -65,11 +65,11 @@ uv run agentboard --config config/dev.toml --database .agentboard/baseline.db sn
 
 Setup uses `git rev-parse --path-format=absolute --git-common-dir` to locate the shared `.git` directory, then takes its parent as the main checkout. No username or repository location is hardcoded, and paths containing spaces are supported. It snapshots the baseline into the current checkout's `.agentboard/dev.db`. Each copy is writable and independent; the source is opened read-only. The existing `.agentboard/` Git ignore rule covers the baseline, copies and manifests. Keep the baseline fixed while comparing branches.
 
-Existing dev databases are preserved. Missing or invalid baselines and snapshot failures fail setup. After creating the baseline, rerun the environment setup for existing worktrees; this does not replace an existing database or refresh it with later baseline changes.
+Existing dev databases are preserved. If the baseline is absent, setup prints a notice and succeeds without creating a database or manifest; [start with fixtures](#start-with-fixtures) to load dev data. Present but invalid baselines (including broken symlinks) and snapshot failures still fail setup. After creating the baseline, rerun the environment setup for existing worktrees; this does not replace an existing database or refresh it with later baseline changes.
 
 Commit the environment and include it in the branch used to create future worktrees. This assumes a normal clone with `.git` inside the main checkout; bare repositories and separately located Git directories are unsupported. Setup initializes data only; the dev server still uses port 4319, so simultaneous servers require a separate port-policy change.
 
-Verification: [setup tests](../backend/tests/test_worktree_setup.py) run the environment's shell script against temporary Git worktrees and synthetic SQLite data to check discovery, independent writable copies, reruns, missing baselines and invalid baselines. Dependency installation is bypassed in these tests.
+Verification: [setup tests](../backend/tests/test_worktree_setup.py) run the environment's shell script against temporary Git worktrees and synthetic SQLite data to check discovery, independent writable copies, reruns, skipping absent baselines, adding a baseline later and rejecting invalid databases. Dependency installation is bypassed in these tests.
 
 ## Configuration and boundaries
 
