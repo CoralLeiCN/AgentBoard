@@ -26,7 +26,7 @@ Core requirements:
 | RUN-01 | Start the API, dashboard, and telemetry receiver as one service. | Implemented |
 | IMP-01 | Import Codex rollout files and directories, including archived history. | Implemented |
 | IMP-02 | Reimport safely, handling duplicates and growing sessions. | Implemented |
-| IMP-03 | Limit an import to a chosen recent subset. | Workaround available |
+| IMP-03 | Limit an import to a chosen recent subset. | Implemented |
 | IMP-04 | Report per-file outcomes and an end-of-run summary. | Implemented |
 | IMP-05 | Preserve raw evidence and handle Codex rollout format changes explicitly. | Accepted policy; partially implemented (§3.5) |
 | TEL-01 | Receive live OTLP/HTTP logs and traces from Codex. | Implemented |
@@ -110,21 +110,21 @@ HTTP/browser imports are bounded to 32 MiB by default. CLI streaming supports la
 
 ### 3.3 Selecting a smaller batch
 
-**IMP-03 — Workaround available**
+**IMP-03 — Implemented 2026-09-07**
 
-The user can import the ten most recently modified rollout files with zsh:
+Select at most ten files across all supplied files and recursively scanned directories:
 
 ```sh
-uv run agentboard import ~/.codex/sessions/**/*.jsonl(.om[1,10])
+uv run agentboard import ~/.codex/sessions ~/.codex/archived_sessions --limit 10
 ```
 
-- The number limits selected files, not the database’s total session count.
-- Multiple files can refer to the same session, so ten files need not mean ten unique sessions.
-- Ordering is by file modification time, not session creation time.
-- Existing database contents remain in place.
-- This expression is zsh-specific; do not escape the tilde or wildcards when entering it in zsh.
+- `--limit N` requires a positive integer. Omission retains the existing unlimited import order.
+- With a limit, order all candidates by modification time (nanoseconds), newest first; break ties by ascending absolute path. Paths whose modification time cannot be read sort last and retain normal per-file import/error handling if selected.
+- The cap applies globally to file attempts, including failures and repeated paths from duplicate or overlapping arguments. Failed imports do not cause replacement files to be selected.
+- Multiple files can refer to the same session, so ten files need not mean ten unique sessions. Ordering does not use session creation time or skip previously imported files.
+- Existing database contents remain in place. Reimports retain section 3.2 semantics; no migration or backfill is required.
 
-No native `import --limit` or `--latest` option exists.
+The [CLI](../backend/agentboard/cli.py) scans candidate paths and modification times before a limited import, retains only the selected batch in memory, and streams each selected file. [Synthetic CLI tests](../backend/tests/test_cli_import.py) cover global selection, ordering/ties, validation, repeated files, failures, reimports, and empty/undersized batches. Browser/API imports are unchanged.
 
 ### 3.4 Import summary
 
@@ -477,7 +477,6 @@ Acceptance: every row has a runnable script or an explicit UI/CLI walkthrough. A
 | Item | Current position |
 | --- | --- |
 | Human/context/internal-request distinction | Discussed follow-up; current classifications can mislead counts and waiting time. |
-| Dedicated import count option | Not implemented; zsh file selection is the documented workaround. |
 | Automatic rollout watcher/import hooks | Not implemented; imports are explicit. |
 | Dashboard live refresh | Not implemented; manually refresh after ingestion. |
 | Exact human think time, embedded approvals, async question waits | Not reliably established from the currently supported records. |

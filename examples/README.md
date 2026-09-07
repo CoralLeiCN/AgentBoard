@@ -14,6 +14,7 @@ Numbered examples run independently, import synthetic fixtures idempotently, and
 | Use case | Demo |
 | --- | --- |
 | Historical Codex import | [01_import.py](01_import.py); also `agentboard import /path/to/sessions` |
+| Limited recent import | `agentboard --config config/dev.toml import examples/fixtures --limit 1`; [selection rules](../docs/specification.md#33-selecting-a-smaller-batch) |
 | LLM versus tool time, including parallel calls | [02_analyze_timing.py](02_analyze_timing.py) |
 | Native OpenTelemetry SDK export, asynchronous batching, protobuf | [03_opentelemetry.py](03_opentelemetry.py); live Codex configuration in [codex-otel.toml](codex-otel.toml) |
 | External trace analysis via streamed API export | [04_external_analysis.py](04_external_analysis.py) |

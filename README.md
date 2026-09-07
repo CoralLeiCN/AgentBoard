@@ -42,11 +42,15 @@ Import real history without changing Codex files:
 ```sh
 uv run agentboard import ~/.codex/sessions
 uv run agentboard import ~/.codex/archived_sessions
+# Import only the ten most recently modified files across both directories:
+uv run agentboard import ~/.codex/sessions ~/.codex/archived_sessions --limit 10
 # A single rollout also works:
 uv run agentboard import /path/to/rollout.jsonl
 ```
 
 The CLI streams and commits each file separately, continues after handled failures, and exits nonzero if any fail. Per-file JSONL goes to stdout; the final stderr summary counts processed/succeeded/failed files, unique successful sessions, new rows, and successful files with no new rows.
+
+`--limit N` caps file attempts, including failures and repeated paths, across all arguments. It requires a positive integer and selects newest modification times first; omitted, all files are imported. It does not cap unique sessions or remove existing data. See [batch selection rules](docs/specification.md#33-selecting-a-smaller-batch).
 
 Identical reimports deduplicate; growing files can complete unfinished calls. Zero new rows can still mean updates. Reimport does not generally correct completed records—see [merge rules](docs/data-lineage.md#8-identity-transactions-and-upgrades). Malformed or partially written JSON rejects the whole file; retry after writing completes. Browser uploads default to a 32 MiB limit. HTTP imports accept contents, never server filesystem paths.
 
