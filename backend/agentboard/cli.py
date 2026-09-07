@@ -1,4 +1,5 @@
 import argparse
+import heapq
 import json
 import sqlite3
 import sys
@@ -7,6 +8,30 @@ from pathlib import Path
 from .adapters import adapters
 from .config import Settings
 from .store import Store
+
+
+def positive_count(value):
+    try:
+        count = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("must be a positive integer") from None
+    if count < 1:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return count
+
+
+def recent_file_key(path):
+    try:
+        return (False, -path.stat().st_mtime_ns, str(path.absolute()))
+    except OSError:
+        # Keep unavailable paths eligible for the normal per-file error handling.
+        return (True, 0, str(path.absolute()))
+
+
+def import_files(paths, limit=None):
+    files = (file for path in paths for file in (path.rglob("*.jsonl") if path.is_dir() else [path]))
+    # Select globally without retaining every discovered path or reading file contents.
+    return files if limit is None else heapq.nsmallest(limit, files, key=recent_file_key)
 
 
 def main():
@@ -20,6 +45,10 @@ def main():
     ingest = commands.add_parser("import", help="Stream Codex rollout files or directories into storage")
     ingest.add_argument("paths", nargs="+", type=Path)
     ingest.add_argument("--agent", default="codex", choices=list(adapters()))
+    ingest.add_argument(
+        "--limit", type=positive_count, metavar="N",
+        help="Attempt at most N files across all paths, newest modification time first (default: all files)",
+    )
     export = commands.add_parser("export", help="Stream normalized events as JSONL")
     export.add_argument("session_id")
     export_mode = export.add_mutually_exclusive_group()
@@ -76,20 +105,18 @@ def main():
     elif args.command == "import":
         processed = failures = inserted = no_new_events = 0
         sessions = set()
-        for path in args.paths:
-            files = path.rglob("*.jsonl") if path.is_dir() else [path]
-            for file in files:
-                processed += 1
-                try:
-                    with file.open(encoding="utf-8", newline="") as lines:
-                        result = store.ingest(adapters()[args.agent].parse(lines))
-                    sessions.update(result["session_ids"])
-                    inserted += result["inserted_events"]
-                    no_new_events += result["inserted_events"] == 0
-                    print(json.dumps({"file": str(file), **result}))
-                except (OSError, ValueError) as exc:
-                    failures += 1
-                    print(json.dumps({"file": str(file), "error": str(exc)}))
+        for file in import_files(args.paths, args.limit):
+            processed += 1
+            try:
+                with file.open(encoding="utf-8", newline="") as lines:
+                    result = store.ingest(adapters()[args.agent].parse(lines))
+                sessions.update(result["session_ids"])
+                inserted += result["inserted_events"]
+                no_new_events += result["inserted_events"] == 0
+                print(json.dumps({"file": str(file), **result}))
+            except (OSError, ValueError) as exc:
+                failures += 1
+                print(json.dumps({"file": str(file), "error": str(exc)}))
         # Keep stdout as per-file JSONL for scripts; show the summary after those records.
         sys.stdout.flush()
         print(
