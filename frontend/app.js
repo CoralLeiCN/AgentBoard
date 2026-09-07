@@ -130,6 +130,7 @@ async function loadEventLineage(event) {
     const results=await Promise.all(ids.map(id=>json(`/api/v1/sessions/${encodeURIComponent(event.session_id)}/events/${encodeURIComponent(id)}/lineage`)));
     if(request!==eventLineageRequest)return;
     $('#event-fields').innerHTML=lineageTable(event,results,esc);
+    bindLineageSources($('#event-fields'),results);
     $('#event-source-note').textContent='Expand a source beneath a field to inspect its exact archived record and JSON path. Context and calculation boundaries appear here; Raw JSONL shows actual event records. Unknown means no verified mapping is available.';
   } catch(error) {
     if(request===eventLineageRequest) {
