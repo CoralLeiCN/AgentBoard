@@ -4,6 +4,7 @@ import json
 import secrets
 import sqlite3
 import threading
+import time
 import zlib
 from pathlib import Path
 
@@ -17,11 +18,19 @@ from starlette.concurrency import run_in_threadpool
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .adapters import adapters
+from .classification import (
+    TAXONOMY_VERSION,
+    ClassificationRequest,
+    ClassificationResult,
+    classification_schema,
+    taxonomy,
+)
 from .config import Settings
-from .models import ModelGateway, ModelServiceError, classify_session, replay_session
+from .models import ModelGateway, ModelServiceError, classification_input, classify_session, replay_session
 from .otlp import decode, normalize
 from .pricing import catalog as pricing_catalog
 from .store import Store
+from .timestamps import format_timestamp
 
 
 def frontend_directory():
@@ -33,12 +42,6 @@ def frontend_directory():
 class ReplayRequest(BaseModel):
     input_id: str
     replacement: str = Field(min_length=1, max_length=30000)
-
-
-class ClassificationRequest(BaseModel):
-    category: str
-    reason: str = Field(max_length=2000)
-    model: str = Field(min_length=1, max_length=200)
 
 
 async def bounded_body(request, limit):
@@ -130,7 +133,9 @@ def create_app(settings=None):
             "features": sorted(settings.features),
             "adapters": sorted(registry),
             "model_mode": settings.model_mode,
+            "model_api": settings.model_api,
             "max_import_bytes": settings.max_body_bytes,
+            "classification_taxonomy": taxonomy(),
         }
 
     @app.get("/api/v1/sessions")
@@ -280,19 +285,32 @@ def create_app(settings=None):
     async def logs(request: Request):
         return await otlp(request, "logs")
 
-    @app.post("/api/v1/sessions/{sid}/classify")
+    @app.get("/api/v1/classification-schema")
+    def classifier_schema():
+        feature("classification")
+        return classification_schema()
+
+    @app.post("/api/v1/sessions/{sid}/classify", response_model=ClassificationResult, response_model_exclude_none=True)
     def classify(sid: str):
         feature("classification")
         return classify_session(store, sid, gateway, settings.max_model_chars)
 
-    @app.put("/api/v1/sessions/{sid}/classification")
+    @app.get("/api/v1/sessions/{sid}/classification-input")
+    def classifier_input(sid: str):
+        feature("classification")
+        return classification_input(store, sid, settings.max_model_chars)
+
+    @app.put("/api/v1/sessions/{sid}/classification", response_model=ClassificationResult, response_model_exclude_none=True)
     def external_classification(sid: str, body: ClassificationRequest):
         feature("classification")
-        from .models import CATEGORIES
-
-        if body.category not in CATEGORIES:
-            raise ValueError("Unsupported category")
-        result = {**body.model_dump(), "provider": "external", "dummy": False}
+        if store.get_session(sid)["identity_kind"] != "session":
+            raise ValueError("Purpose classification requires a session, not unattributed telemetry")
+        result = {
+            **body.model_dump(mode="json", exclude_none=True), "provider": "external", "dummy": False,
+            "taxonomy_version": TAXONOMY_VERSION, "classified_at": format_timestamp(time.time_ns()),
+            "content_origin": "model_generated", "provenance": "externally_asserted",
+        }
+        result = ClassificationResult.model_validate(result).model_dump(mode="json", exclude_none=True)
         store.classify(sid, result)
         return result
 

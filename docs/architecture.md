@@ -28,7 +28,8 @@ flowchart LR
 | [`parallel.py`](../backend/agentboard/parallel.py) | Derives source/quality/turn/trace/parent-scoped tool-overlap groups from normalized intervals. Shared by API and UI; does not mutate events or require schema migration. |
 | [`usage.py`](../backend/agentboard/usage.py), [`pricing.py`](../backend/agentboard/pricing.py) | Reads one immutable raw archive to derive usage and dated Standard API value. Prices use decimal arithmetic; no model calls, live pricing fetches, ingestion changes or schema migrations. Each report scans the archive and retains usage rows in memory; it does not cache or materialize aggregates. |
 | [`api.py`](../backend/agentboard/api.py) | Shared routes, auth, host/origin checks, body limits, backpressure, configuration, plugin registration. CPU/DB/model work runs in worker threads. Acknowledgment follows commit under WAL/`synchronous=NORMAL`; power-loss durability follows SQLite NORMAL semantics. |
-| [`models.py`](../backend/agentboard/models.py) | Optional OpenAI client, bounded transcript construction, validated classification, text replay. No ingestion-time model calls or tool execution. |
+| [`models.py`](../backend/agentboard/models.py) | Optional OpenAI client, bounded transcript construction, validated purpose classification, text replay. The [shared taxonomy](../backend/agentboard/classification.py) also serves external agents and UI filters. No ingestion-time model calls or tool execution. |
+| [`prompts/`](../backend/agentboard/prompts/README.md) | Reusable model instructions as bundled text templates. Classification renders its template with the shared category definitions; package-resource loading works from source and installed wheels. |
 | [`resume.py`](../backend/agentboard/resume.py) | Explicit CLI-only Codex JSON-lines RPC over stdio. Neither modifies rollout files nor exposes remote command execution. |
 | [`frontend/`](../frontend/) | Plain-JavaScript UI over the shared API; no separate frontend API/build pipeline. Source checkouts serve these files directly, and wheel builds bundle them as package data. Codex field origins and source pointers come from the backend lineage API; other-source descriptions remain display-time mappings. See [field lineage](data-lineage.md#36-per-field-codex-lineage). |
 
@@ -44,7 +45,7 @@ HTTP buffers a bounded body, including gzip expansion; CLI imports stream larger
 
 Historical imports install no hooks or watchers and add no instrumentation to the agent path. Reimport explicitly or use Codex's asynchronous OTel exporter. SDK exporters/collectors own retry and queue policies; AgentBoard makes no measured agent-latency improvement claim.
 
-Model calls run synchronously in worker threads: 30-second request timeout, two-second discovery timeout, no SDK retries. The framework thread pool limits concurrency; there is no durable scheduler. Oversized replay contexts fail; classification records truncation. Expensive service workloads may use an optional job plugin, keeping queues unnecessary locally.
+Model calls run synchronously in worker threads: configurable request timeout (30 seconds by default), two-second discovery timeout, no SDK retries. The framework thread pool limits concurrency; there is no durable scheduler. Oversized replay contexts fail; classification records truncation. Expensive service workloads may use an optional job plugin, keeping queues unnecessary locally.
 
 ## Evolution without speculative infrastructure
 

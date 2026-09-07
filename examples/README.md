@@ -18,7 +18,7 @@ Numbered examples run independently, import synthetic fixtures idempotently, and
 | LLM versus tool time, including parallel calls | [02_analyze_timing.py](02_analyze_timing.py) |
 | Native OpenTelemetry SDK export, asynchronous batching, protobuf | [03_opentelemetry.py](03_opentelemetry.py); live Codex configuration in [codex-otel.toml](codex-otel.toml) |
 | External trace analysis via streamed API export | [04_external_analysis.py](04_external_analysis.py) |
-| AI session classification | [05_classify.py](05_classify.py) |
+| AI session purpose classification | [05_classify.py](05_classify.py); batch: `agentboard classify --all`; [configuration and taxonomy](../docs/session-purpose.md) |
 | Resume transcript from the middle with edited input | [06_replay.py](06_replay.py) |
 | Filter and extract every user input | [07_user_inputs.py](07_user_inputs.py) |
 | Native Codex branch from a preceding completed turn | [08_native_codex_resume.py](08_native_codex_resume.py); prints a plan, because synthetic IDs are not native Codex sessions |
@@ -28,7 +28,7 @@ Numbered examples run independently, import synthetic fixtures idempotently, and
 | Minimal tracing-only configuration | Start with `AGENTBOARD_FEATURES= uv run agentboard serve`; classification/replay return 404 and UI controls disappear |
 | Reproducible storage efficiency probe | `uv run python examples/benchmark.py --events 10000` |
 
-Models default to `http://localhost:30000/v1`; the OpenAI client discovers `/models` and calls Chat Completions. Unavailable-service results carry `dummy: true`, preserving API/store/replay checks. Set server `AGENTBOARD_MODEL_MODE=dummy` to force fallback or `local` to require a model. The independent worker also reads its own environment settings. Tests verify real-client discovery/completion through mock HTTP without an external service.
+Models default to `http://localhost:30000/v1`; the OpenAI client discovers `/models` and calls Chat Completions by default. Set `AGENTBOARD_MODEL_API=responses` for a Responses endpoint; [live classification tests](../docs/session-purpose.md#live-responses-api-test) are opt-in. Unavailable-service results carry `dummy: true`, preserving API/store/replay checks. Set server `AGENTBOARD_MODEL_MODE=dummy` to force fallback or `local` to require a model. The independent worker also reads its own environment settings. Tests verify real-client discovery/completion through mock HTTP without an external service.
 
 A separate [real Codex excerpt](fixtures/codex-real-excerpt.md) contains 13 reviewed, redacted records from a local CLI 0.153.4 session, with original line mapping and preserved timings. Import it explicitly into the dev dataset to inspect recorded item lifetimes and custom tool calls. **Load demo** continues to load the synthetic fixture.
 

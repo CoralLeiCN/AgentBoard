@@ -558,9 +558,11 @@ class Store:
             where += " AND identity_kind='session'"
         elif identity_kind != "all":
             raise ValueError("Unknown identity kind")
-        if category:
+        if category == "unclassified":
+            where += " AND classification IS NULL"
+        elif category:
             where += " AND json_extract(classification,'$.category')=?"
-            args.append(category)
+            args.append("bug-fixing" if category == "debugging" else category)
         with self.connect() as db:
             db.execute("BEGIN")
             identity_counts = dict(db.execute("SELECT identity_kind,count(*) FROM sessions GROUP BY identity_kind"))
@@ -629,6 +631,35 @@ class Store:
                 args.append(before_sequence)
             for row in db.execute(sql + " ORDER BY sequence,row_id", args):
                 yield self.event_row(row)
+
+    def classification_messages(self, sid):
+        """Prefer one conversation source over duplicate telemetry; omit tool bodies."""
+        with self.connect() as db:
+            db.execute("BEGIN")
+            where = """session_id=? AND kind IN ('user','assistant') AND trim(text, ?)<>''
+                       AND upper(trim(text, ?)) NOT IN ('[REDACTED]', '[PROMPT CONTENT NOT RECORDED]')"""
+            args = (sid, " \t\n\r\v\f", " \t\n\r\v\f")
+            sources = [r[0] for r in db.execute(f"SELECT DISTINCT source FROM events WHERE {where}", args)]
+            if not sources:
+                return
+            preferred = ("codex_jsonl", "replay", "otlp_log", "otlp_trace")
+            source = next((s for s in preferred if s in sources), sorted(sources)[0])
+            # OTLP sequence numbers are batch-local, not conversation positions.
+            order = "start_time,row_id" if source in ("otlp_log", "otlp_trace") else "sequence,row_id"
+            for row in db.execute(
+                f"SELECT id,kind,text,source FROM events WHERE {where} AND source=? ORDER BY {order}",
+                (*args, source),
+            ):
+                yield dict(row)
+
+    def classification_candidates(self, limit=None, force=False):
+        """Snapshot eligible IDs before classifications change the unclassified set."""
+        with self.connect() as db:
+            where = "identity_kind='session'" + ("" if force else " AND classification IS NULL")
+            return [r[0] for r in db.execute(
+                f"SELECT id FROM sessions WHERE {where} ORDER BY started_at DESC,id LIMIT ?",
+                (-1 if limit is None else limit,),
+            )]
 
     def event(self, sid, eid):
         with self.connect() as db:

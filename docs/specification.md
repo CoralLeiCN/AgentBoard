@@ -348,7 +348,7 @@ Schema v1 timestamps migrate to text, schema v3 adds raw archive tables, schema 
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /api/v1/config` | Enabled features, adapters, model mode, and import body limit. |
+| `GET /api/v1/config` | Enabled features, adapters, model mode, import body limit, and purpose taxonomy. |
 | `GET /api/v1/sessions` | Search/filter observed sessions with limit/offset pagination. `identity_kind=unattributed` exposes telemetry groups; `all` includes both. |
 | `GET /api/v1/sessions/{sid}` | Session metadata and classification. |
 | `GET /api/v1/sessions/{sid}/events` | Filter by source, kind, and text; paginate with a cursor. |
@@ -361,6 +361,8 @@ Schema v1 timestamps migrate to text, schema v3 adds raw archive tables, schema 
 | `GET /api/v1/sessions/{sid}/export` | Stream normalized JSONL, optionally filtered by kind. |
 | `POST /api/v1/import/codex` | Import rollout contents. |
 | `POST /v1/logs`, `POST /v1/traces` | Receive telemetry. |
+| `GET /api/v1/classification-schema` | Generated strict JSON Schema for classification output; canonical category enum and reason constraints. |
+| `GET /api/v1/sessions/{sid}/classification-input` | Bounded classifier messages and input provenance; no model call. |
 | `POST /api/v1/sessions/{sid}/classify` | Run optional model classification. |
 | `PUT /api/v1/sessions/{sid}/classification` | Save external classification. |
 | `POST /api/v1/sessions/{sid}/replay` | Create a transcript replay from an edited input. |
@@ -376,15 +378,17 @@ Exports contain normalized events, not a complete database/session backup. Sessi
 
 **MODEL-01 — Implemented**
 
-Support `writing`, `coding`, `bug-fixing`, `research`, and `other`, with a reason, model identity, and explicit dummy/fallback labeling. Allow classification in the UI/API or by an independent worker that reads an export and writes a validated result.
+Support the [report-derived session purpose taxonomy](session-purpose.md#categories), with a reason, model identity, and explicit dummy/fallback labeling. Keep existing category IDs compatible. Allow individual and page classification in the UI, CLI batch classification (`classify --all`, skipping saved labels unless `--force`), or an independent worker that reads bounded classification input or an export and writes a validated result. Batch failures do not suppress later sessions; unattributed telemetry is excluded. See [usage and batch semantics](session-purpose.md).
 
 An independent model or coding-agent session must fetch trace/input data and submit labels through the frontend’s backend API, without direct database access.
 
 The optional gateway uses an OpenAI-compatible model endpoint, defaulting to `http://localhost:30000/v1`. A configured model ID is optional; otherwise discover a model. Support `auto`, `local`, and `dummy` modes. In auto mode an unavailable service can use a labeled dummy fallback; a reachable service returning invalid output or rejecting a request must surface an error.
 
-Use Python’s OpenAI client: `client.models.list()` discovers at `http://localhost:30000/v1/models`; `client.chat.completions.create()` generates responses. Examples/model tests should exercise an available service and allow a labeled dummy when unavailable, so unrelated development/testing can continue.
+Use Python’s OpenAI client: `client.models.list()` discovers at the configured base URL plus `/models`; `client.chat.completions.create()` is the default generation protocol. Setting `model_api=responses` (or `AGENTBOARD_MODEL_API=responses`) uses `client.responses.create()` instead. Completed, nonempty text is required; incomplete/failed Responses results are errors. See [wire parameters](data-lineage.md#10-model-derived-data-and-continuation) and the [opt-in real classification test](session-purpose.md#live-responses-api-test). Examples/model tests should exercise an available service and allow a labeled dummy when unavailable, so unrelated development/testing can continue.
 
-Bound classification context to 60,000 characters by default and report truncation. Treat imported transcript content as data rather than instructions to the classifier.
+Generate strict structured-output schemas from the enum-backed Pydantic label model for both model APIs; validate typed request/result objects and publish the schema. Reject unexpected fields, invalid categories, refusals, incomplete responses, and Markdown-wrapped output. Keep the legacy `debugging` alias only at the external-submission boundary. See the [contract](session-purpose.md#structured-output-contract).
+
+Bound classification context to 60,000 characters by default, preferring one conversation source and excluding tool bodies. Report truncation, input/prompt hashes, source event IDs, taxonomy version, and classification time. Missing usable text is an error. Treat imported transcript content as data rather than instructions to the classifier. See [selection and limitations](data-lineage.md#10-model-derived-data-and-continuation).
 
 ### 10.2 Transcript replay
 

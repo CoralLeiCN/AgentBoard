@@ -25,6 +25,8 @@ class Settings:
     model: str = field(default_factory=lambda: os.getenv("AGENTBOARD_MODEL", ""))
     model_key: str = field(default_factory=lambda: os.getenv("AGENTBOARD_MODEL_KEY", "local"))
     model_mode: str = field(default_factory=lambda: os.getenv("AGENTBOARD_MODEL_MODE", "auto"))
+    model_api: str = field(default_factory=lambda: os.getenv("AGENTBOARD_MODEL_API", "chat_completions"))
+    model_timeout_seconds: int = field(default_factory=lambda: int(os.getenv("AGENTBOARD_MODEL_TIMEOUT_SECONDS", "30")))
     max_body_bytes: int = 32 * 1024 * 1024
     ingest_concurrency: int = 4
     max_model_chars: int = 60000
