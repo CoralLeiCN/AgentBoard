@@ -36,7 +36,7 @@ PERF-01 remains partially verified. Still needed: agreed throughput/latency/reso
 
 ## Verification
 
-Final automated result: **417 backend tests passed, 5 skipped; 36 frontend tests passed.**
+2026-09-08 automated result: **417 backend tests passed, 5 skipped; 36 frontend tests passed.**
 
 - Backend suite exercises all 13 capabilities, dependency-valid singleton/chain profiles, disabled HTTP/OpenAPI/CLI behavior, migration, lazy imports, lifecycle failure, raw completeness and reprocessing. It also retains timing, attribution, lineage, usage/pricing, auth, replay, native protocol and stored-schema integrity coverage.
 - Frontend Node suite verifies rendering, capability guards/requests, provenance, usage, classification and view persistence. Lint and whitespace checks pass.
@@ -46,6 +46,8 @@ Final automated result: **417 backend tests passed, 5 skipped; 36 frontend tests
 Browser checks cover demo import; session/event browsing and filtering; timeline/parallel labels; raw, normalized and field-evidence views; usage; single/page dummy classification; native plan generation; dummy edited replay; malformed-file capture diagnostics; and desktop/narrow layouts. The empty profile keeps browsing with no optional controls or requests. The selective profile calculates usage and field evidence without raw inspection or export. Server access logs and frontend request-guard tests verify disabled endpoints are not requested.
 
 Browser export actions reached successful API responses, and exact export content is covered by backend tests. Codex's browser did not emit a download event for the Blob download, so saving a file to the user's download folder is not verified. Live external-model calls and actual native Codex execution are outside this run: five opt-in external-service tests skip without endpoint configuration; dummy/mock/fake-protocol coverage is explicit. Representative browser checks are not exhaustive accessibility or capacity certification.
+
+2026-09-09 integration verification against `main` at `a4baf7f`: **437 backend tests passed, 5 skipped; 36 frontend tests passed.** The newer seed workflow now uses core capture; its synthetic regression verifies payloads survive baseline, checkpoint and restored copies. Ruff, whitespace checks, wheel build and extracted-wheel smoke passed. In-app browser checks on a new synthetic dev database covered demo import, timeline, usage, field lineage and raw event records. `uv run --extra dev pytest --run-private-e2e -m e2e -q` failed during private endpoint setup: the required LAN service refused connections for all five cases (four failures, one setup error). Live model verification remains blocked; no fallback provider was used.
 
 ## Upgrade and operational effects
 

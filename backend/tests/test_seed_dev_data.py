@@ -3,6 +3,7 @@ import sqlite3
 
 import pytest
 
+from agentboard.capture_store import CaptureRepository
 from agentboard.snapshot import snapshot_database
 from agentboard.store import Store
 from scripts.seed_dev_data import seed_database
@@ -36,6 +37,13 @@ def test_seed_checkpoint_and_worktree_restore_retain_every_raw_byte(tmp_path):
         store = Store(str(database))
         for sid, body in bodies.items():
             assert b"".join(store.export_raw(sid)) == body
+        captures = CaptureRepository(store.connect)
+        attempts = captures.list()["items"]
+        assert len(attempts) == len(bodies)
+        for attempt in attempts:
+            assert attempt["status"] == "normalized"
+            sid, = attempt["result"]["session_ids"]
+            assert b"".join(captures.export(attempt["id"])) == bodies[sid]
         with sqlite3.connect(database) as db:
             assert db.execute("select count(*) from dev_seed_sources").fetchone()[0] == 2
             assert db.execute("pragma integrity_check").fetchone()[0] == "ok"

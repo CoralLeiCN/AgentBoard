@@ -10,9 +10,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from agentboard.adapters import adapters
+from agentboard.config import Settings
+from agentboard.runtime import Runtime
 from agentboard.snapshot import snapshot_database
-from agentboard.store import Store
 
 
 def seed_database(paths, baseline, checkpoint):
@@ -27,8 +27,12 @@ def seed_database(paths, baseline, checkpoint):
             raise ValueError("Baseline/checkpoint already exists; preserve it and choose a new destination")
     baseline.parent.mkdir(parents=True, exist_ok=True)
     # A failed import must never leave a partial baseline for another worktree to copy.
-    with tempfile.TemporaryDirectory(prefix=".seed-", dir=baseline.parent) as temporary:
-        store = Store(str(Path(temporary) / "seed.db"))
+    with (
+        tempfile.TemporaryDirectory(prefix=".seed-", dir=baseline.parent) as temporary,
+        Runtime(Settings(database=str(Path(temporary) / "seed.db"),
+                         features={"import", "field_lineage"}, model_mode="dummy")) as runtime,
+    ):
+        store = runtime.store
         with store.connect() as db:
             db.execute("""CREATE TABLE dev_seed_sources (
                 import_id INTEGER PRIMARY KEY REFERENCES raw_imports(id),
@@ -36,8 +40,8 @@ def seed_database(paths, baseline, checkpoint):
         for path in paths:
             with path.open("rb") as handle:
                 before = hashlib.file_digest(handle, "sha256").hexdigest()
-            with path.open(encoding="utf-8", newline="") as lines:
-                result = store.ingest(adapters()["codex"].parse(lines))
+            with path.open("rb") as lines:
+                result = runtime.ingestion.import_file("codex", lines)
             if len(result["session_ids"]) != 1 or len(result["raw_import_ids"]) != 1:
                 raise ValueError("Each selected rollout must produce one session and one complete raw archive")
             sid, archive_id = result["session_ids"][0], result["raw_import_ids"][0]

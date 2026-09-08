@@ -65,7 +65,7 @@ The following capabilities are available when their [feature IDs](docs/features.
 
 - Codex rollout import: session metadata, prompts, assistant text and reasoning summaries, function/custom tool calls, token-usage events, turn boundaries, and newer item timing records.
 - Human/context/internal input attribution for rollout prompt counts, branch selection, and inferred waiting time; [limitations and evidence](docs/data-lineage.md#341-input-attribution) remain explicit.
-- OTLP/HTTP **traces and logs**, accepting JSON, protobuf, and gzip at `/v1/traces` and `/v1/logs`. Decoded span attributes, resource/scope metadata, IDs, parents, links, and span events remain inspectable/exportable; original wire bytes are not retained.
+- OTLP/HTTP **traces and logs**, accepting JSON, protobuf, and gzip at `/v1/traces` and `/v1/logs`. Decoded span attributes, resource/scope metadata, IDs, parents, links, and span events remain inspectable/exportable; complete original wire bytes are retained in core capture.
 - Browser session search and category filters, timing waterfall, source selection, event inspection, prompt extraction, classification, export, and branching.
 - Versioned REST API, cursor-paginated event/input queries, and streaming JSONL exports. [Interactive API documentation](http://127.0.0.1:4318/docs) and `/openapi.json` describe routes and request parameters.
 - Optional local-model classification and conversation replay, plus native Codex branch plans and a CLI executor.
