@@ -17,10 +17,14 @@ For all project documentation:
 | Document | Purpose |
 | --- | --- |
 | [README](../README.md) | Quick start and navigation |
+| [Principles](principles.md) | Enduring product intent and design principles that guide tradeoffs |
 | [Specification](specification.md) | Requirements, status, and acceptance criteria |
+| [Feature list](features.md) | Mandatory core, optional capability IDs, configuration, and first-party module contract |
+| [Modular feature plan](modular-features-plan.md) | Approved first-party architecture target, Grafana/VS Code/Obsidian lessons, refactor stages, and deferred plugin design |
 | [Architecture](architecture.md) | Components, boundaries, and design choices |
+| [Architecture review](architecture-review.md) | Implemented corrections, verification, measured performance and remaining limits |
 | [Data lineage](data-lineage.md) | Exact mappings and metric semantics |
 | [Data-quality gaps](data-quality-gaps.md) | Current correctness concerns, evidence, and verification cases |
 | [Backlog](backlog.md) | Deferred capabilities and future wishes |
 
-Keep each detailed rule in one primary document; cross-link elsewhere.
+Keep each detailed rule in one primary document; cross-link elsewhere. Record high-level intent in the principles, translate it into acceptance criteria in the specification, and keep implementation steps and current gaps in their respective documents.

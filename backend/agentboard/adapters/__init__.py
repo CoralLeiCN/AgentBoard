@@ -1,7 +1,1 @@
-"""Explicitly registered agent adapters; no per-request dynamic code loading."""
-
-from .codex import CodexAdapter
-
-
-def adapters():
-    return {"codex": CodexAdapter()}
+"""First-party parsers; catalog inspection does not import parser implementations."""

@@ -1,8 +1,10 @@
 # AgentBoard backlog and wishlist
 
-Updated: 2026-09-06
+Updated: 2026-09-08
 
 Future capabilities for review, not initial-release acceptance criteria or delivery commitments. Current requirements live in the [specification](specification.md); current correctness concerns in the [gap register](data-quality-gaps.md).
+
+**Clarified 2026-09-08:** the [principles](principles.md) require high performance and complete raw collection throughout the Python prototype; [RAW-01/PERF-01](specification.md#11-raw-capture-and-performance-acceptance) define acceptance. WL-001 defers larger deployment capacity and infrastructure. Efficient implementation and performance measurement apply now.
 
 ## Wishlist register
 
@@ -53,7 +55,7 @@ Review API/canonical-event compatibility, data migration, local installation cos
 
 ## WL-003 — Future agent integrations
 
-Consider **OpenCode**, **Pi Agent**, and **Claude Code** after initial Codex support. For each, review session/telemetry formats, identity, human-input evidence, timing quality, tool lifecycle, and continuation behavior. Use optional adapters/plugins and the shared event/API contract; do not assume Codex-equivalent evidence or replay capabilities.
+Consider **OpenCode**, **Pi Agent**, and **Claude Code** after initial Codex support. For each, review session/telemetry formats, identity, human-input evidence, timing quality, tool lifecycle, and continuation behavior. Use the [first-party module contract](features.md#first-party-module-contract), owned adapters, and shared event/API contract; do not assume Codex-equivalent evidence or replay capabilities.
 
 ## Review process
 
@@ -67,3 +69,4 @@ Human/context/internal-input correctness remains tracked in [specification §7](
 | --- | --- |
 | 2026-09-06 | User requested a separate backlog/wishlist for high-volume service support, to be reviewed later. Keep initial-release deployment scope unchanged. |
 | 2026-09-06 | Recorded the original future-language and future-agent options alongside that item; no implementation or prioritization decision was made. |
+| 2026-09-08 | User requires high performance while prototyping in Python and complete raw capture for future analysis. Record these as current requirements (RAW-01/PERF-01); keep larger deployment infrastructure and language replacement separate. |

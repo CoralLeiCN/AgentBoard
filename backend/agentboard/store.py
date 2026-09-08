@@ -7,14 +7,11 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
+from .capture_store import CAPTURE_SCHEMA
 from .domain import RawLine, RawTraceEnd, Session
 from .input_origin import session_input_origin
 from .lineage import expanded, leaves, resolve, same_value, spec
-from .otlp import session_identity
-from .parallel import NOTE as PARALLEL_NOTE
-from .parallel import parallel_groups
 from .timestamps import format_timestamp, timestamp_ns
-from .usage import analyze as analyze_usage
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -67,13 +64,25 @@ CREATE TABLE IF NOT EXISTS session_field_sources (
  field TEXT NOT NULL, import_id INTEGER NOT NULL REFERENCES raw_imports(id) ON DELETE CASCADE,
  description TEXT NOT NULL, PRIMARY KEY(session_id, field)
 );
+CREATE TABLE IF NOT EXISTS rollout_line_fingerprints (
+ session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+ sequence INTEGER NOT NULL, sha256 BLOB NOT NULL,
+ PRIMARY KEY(session_id, sequence, sha256)
+);
 CREATE INDEX IF NOT EXISTS sessions_identity ON sessions(identity_kind,started_at DESC,id);
-PRAGMA user_version = 7;
+""" + CAPTURE_SCHEMA + """
+PRAGMA user_version = 9;
 """
 
 
+def rollout_line_fingerprint(content):
+    """Compare snapshot content without retaining source text; ignore line-ending differences."""
+    return hashlib.sha256(content.rstrip(b"\r\n")).digest()
+
+
 class Store:
-    def __init__(self, path: str):
+    def __init__(self, path: str, *, retain_lineage: bool = True):
+        self.retain_lineage = retain_lineage
         if path == ":memory:":
             raise ValueError("Use a file-backed SQLite database; connections are scoped per operation")
         self.path = path
@@ -96,7 +105,7 @@ class Store:
             # Do not use executescript: it commits before running, breaking atomic migration.
             db.execute("BEGIN IMMEDIATE")
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, 3, 4, 5, 6, 7):
+            if version not in range(10):
                 raise ValueError("Unsupported database schema version")
             if version == 1:
                 self._migrate_timestamps(db)
@@ -107,6 +116,17 @@ class Store:
             for statement in SCHEMA.split(";"):
                 if statement.strip():
                     db.execute(statement)
+            if version < 8:
+                archived = db.execute(
+                    """SELECT r.session_id,l.sequence,l.content FROM raw_imports r
+                    JOIN raw_lines l ON l.import_id=r.id
+                    WHERE r.mapping_version LIKE 'codex-jsonl-%'""",
+                )
+                db.executemany(
+                    "INSERT OR IGNORE INTO rollout_line_fingerprints VALUES(?,?,?)",
+                    ((row["session_id"], row["sequence"], rollout_line_fingerprint(row["content"]))
+                     for row in archived),
+                )
             if version < 5:
                 # Distinguish legacy trace buckets using recorded relationships, not ID shape.
                 db.execute("""UPDATE sessions SET identity_kind='unattributed_trace'
@@ -135,11 +155,15 @@ class Store:
         db.execute("ALTER TABLE events_v2 RENAME TO events")
 
     @contextmanager
-    def connect(self):
-        db = sqlite3.connect(self.path, timeout=5)
+    def connect(self, *, stream=False):
+        # HTTP advances a sync response iterator sequentially across worker threads.
+        # Only read-only streaming connections opt out of SQLite thread affinity.
+        db = sqlite3.connect(self.path, timeout=5, check_same_thread=not stream)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA foreign_keys=ON")
         db.execute("PRAGMA synchronous=NORMAL")
+        if stream:
+            db.execute("PRAGMA query_only=ON")
         try:
             with db:
                 yield db
@@ -152,6 +176,7 @@ class Store:
         otlp_traces = set()
         inserted = 0
         raw_id = None
+        raw_open = False
         raw_import_ids = []
         digest = hashlib.sha256()
         byte_count = line_count = 0
@@ -161,17 +186,25 @@ class Store:
         with self.connect() as db:
             for item in items:
                 if isinstance(item, RawLine):
+                    if not raw_open:
+                        db.execute("""CREATE TEMP TABLE IF NOT EXISTS incoming_line_fingerprints (
+                            sequence INTEGER PRIMARY KEY, sha256 BLOB NOT NULL)""")
+                    raw_open = True
+                    content = item.text.encode("utf-8")
+                    line_count += 1
+                    db.execute("INSERT INTO incoming_line_fingerprints VALUES(?,?)",
+                               (item.sequence, rollout_line_fingerprint(content)))
                     if raw_id is None:
                         raw_id = db.execute("INSERT INTO raw_imports DEFAULT VALUES").lastrowid
-                    content = item.text.encode("utf-8")
                     digest.update(content)
                     byte_count += len(content)
-                    line_count += 1
                     db.execute("INSERT INTO raw_lines VALUES(?,?,?)", (raw_id, item.sequence, content))
                 elif isinstance(item, RawTraceEnd):
+                    raw_open = False
                     if item.mapping_version.startswith("codex-jsonl-"):
                         self._refresh_codex_inputs(
-                            db, item.session_id, raw_id, line_count, inferred_events, input_ids, excluded_titles
+                            db, item.session_id, raw_id, line_count, inferred_events, input_ids, excluded_titles,
+                            retain_lineage=self.retain_lineage,
                         )
                     previous = db.execute(
                         "SELECT id FROM raw_imports WHERE session_id=? AND sha256=? AND mapping_version=?",
@@ -198,6 +231,7 @@ class Store:
                             ),
                         )
                         raw_import_ids.append(raw_id)
+                    db.execute("DELETE FROM incoming_line_fingerprints")
                     raw_id = None
                     digest = hashlib.sha256()
                     byte_count = line_count = 0
@@ -217,13 +251,14 @@ class Store:
                         metadata=json_patch(sessions.metadata,excluded.metadata)""",
                         (item.id, item.agent, item.title, item.started_at, json.dumps(item.metadata), item.identity_kind),
                     )
-                    if raw_id is not None:
-                        stored = self.session_row(db.execute("SELECT * FROM sessions WHERE id=?", (item.id,)).fetchone())
-                        self._save_field_sources(db, "session", item.id, stored, item, raw_id)
+                    stored = self.session_row(db.execute("SELECT * FROM sessions WHERE id=?", (item.id,)).fetchone())
+                    self._save_field_sources(
+                        db, "session", item.id, stored, item, raw_id, retain=self.retain_lineage,
+                    )
                 else:
                     d = item.model_dump()
                     attribution = item.attributes.get("input_attribution")
-                    if raw_id is not None and item.source == "codex_jsonl":
+                    if raw_open and item.source == "codex_jsonl":
                         if attribution:
                             input_ids.append(item.id)
                         if item.kind == "llm" or (
@@ -298,24 +333,25 @@ class Store:
                             ),
                         ).rowcount > 0
                         updated = updated or completed
+                    stored = self.event_row(db.execute(
+                        "SELECT * FROM events WHERE session_id=? AND id=?",
+                        (d["session_id"], item.id),
+                    ).fetchone())
+                    self._save_field_sources(
+                        db, "event", stored["row_id"], stored, item, raw_id, retain=self.retain_lineage,
+                    )
+                    row_id = stored.pop("row_id")
+                    if updated:
+                        # Invalidate stale evidence even while its feature is disabled.
+                        db.execute("DELETE FROM event_raw_sources WHERE event_row_id=?", (row_id,))
                     if raw_id is not None:
-                        stored = self.event_row(db.execute(
-                            "SELECT * FROM events WHERE session_id=? AND id=?",
-                            (item.session_id, item.id),
-                        ).fetchone())
-                        self._save_field_sources(db, "event", stored["row_id"], stored, item, raw_id)
-                        row_id = stored.pop("row_id")
-                        if updated:
-                            # A partial update may combine old content with new timing.
-                            # Do not claim a single archive explains that hybrid event.
-                            db.execute("DELETE FROM event_raw_sources WHERE event_row_id=?", (row_id,))
                         if item.raw_line_numbers and stored == item.model_dump():
                             db.execute(
                                 """INSERT INTO event_raw_sources VALUES(?,?,?)
                                 ON CONFLICT(event_row_id) DO NOTHING""",
                                 (row_id, raw_id, json.dumps(sorted(set(item.raw_line_numbers)))),
                             )
-            if raw_id is not None:
+            if raw_open:
                 raise ValueError("Incomplete raw trace import")
             if otlp_traces:
                 self._reconcile_otlp(db, otlp_traces)
@@ -333,18 +369,22 @@ class Store:
         }
 
     @staticmethod
-    def _save_field_sources(db, owner, owner_id, stored, incoming, import_id):
+    def _save_field_sources(db, owner, owner_id, stored, incoming, import_id, *, retain=True):
         """Keep matching old fields; bind changed/backfilled values independently to this snapshot."""
         table = f"{owner}_field_sources"
         column = "event_row_id" if owner == "event" else "session_id"
-        current = leaves(stored)
         old = {row["field"]: json.loads(row["description"]) for row in db.execute(
             f"SELECT field,description FROM {table} WHERE {column}=?", (owner_id,)
         )}
-        incoming_value = incoming.model_dump()
-        if owner == "session":
-            incoming_value["input_origin"] = session_input_origin(incoming.metadata)
-        descriptions = expanded(incoming_value, incoming.field_lineage)
+        if not old and (not retain or import_id is None):
+            return
+        current = leaves(stored)
+        descriptions = {}
+        if retain and import_id is not None:
+            incoming_value = incoming.model_dump()
+            if owner == "session":
+                incoming_value["input_origin"] = session_input_origin(incoming.metadata)
+            descriptions = expanded(incoming_value, incoming.field_lineage)
         for field, description in old.items():
             if field not in current or not same_value(current[field], description["value"]):
                 db.execute(f"DELETE FROM {table} WHERE {column}=? AND field=?", (owner_id, field))
@@ -409,17 +449,18 @@ class Store:
                     "fields": fields, "archives": list(archives.values()), "records": list(records.values())}
 
     @staticmethod
-    def _refresh_codex_inputs(db, sid, raw_id, line_count, inferred_events, input_ids, excluded_titles):
+    def _refresh_codex_inputs(
+        db, sid, raw_id, line_count, inferred_events, input_ids, excluded_titles, *, retain_lineage=True,
+    ):
         # Recompute derived gaps for the imported prefix, retaining later events
         # in a growing rollout. Contradictory snapshots cannot safely replace them.
         conflict = db.execute(
-            """SELECT 1 FROM raw_imports r JOIN raw_lines old ON old.import_id=r.id
-            JOIN raw_lines new ON new.import_id=? AND new.sequence=old.sequence
-            WHERE r.session_id=? AND r.id<>?
-            AND rtrim(CAST(old.content AS TEXT),char(13)||char(10))
-                <>rtrim(CAST(new.content AS TEXT),char(13)||char(10)) LIMIT 1""",
-            (raw_id, sid, raw_id),
+            """SELECT 1 FROM rollout_line_fingerprints old JOIN incoming_line_fingerprints new
+            ON new.sequence=old.sequence WHERE old.session_id=? AND old.sha256<>new.sha256 LIMIT 1""",
+            (sid,),
         ).fetchone()
+        db.execute("""INSERT OR IGNORE INTO rollout_line_fingerprints
+            SELECT ?,sequence,sha256 FROM incoming_line_fingerprints""", (sid,))
         if not conflict:
             db.execute(
                 """DELETE FROM events WHERE session_id=? AND source='codex_jsonl' AND sequence<=?
@@ -442,7 +483,9 @@ class Store:
                 stored = Store.event_row(db.execute(
                     "SELECT * FROM events WHERE session_id=? AND id=?", (sid, event.id),
                 ).fetchone())
-                Store._save_field_sources(db, "event", stored["row_id"], stored, event, raw_id)
+                Store._save_field_sources(
+                    db, "event", stored["row_id"], stored, event, raw_id, retain=retain_lineage,
+                )
         # Only replace an automatically derived title that came from excluded text.
         title = db.execute("SELECT title FROM sessions WHERE id=?", (sid,)).fetchone()[0]
         if title in excluded_titles:
@@ -455,6 +498,8 @@ class Store:
 
     @staticmethod
     def _index_otlp_identity(db, event):
+        from .otlp import session_identity
+
         raw = event["attributes"]["otel"]
         direct, evidence = session_identity(raw.get("resource", {}), raw.get("scope", {}), raw["record"])
         db.execute("""INSERT OR REPLACE INTO otlp_session_evidence VALUES(?,?,?,?)""",
@@ -561,13 +606,15 @@ class Store:
 
     def export_raw(self, sid, import_id=None):
         archive = self.raw_import(sid, import_id)
-        with self.connect() as db:
+        with self.connect(stream=True) as db:
             for row in db.execute(
                 "SELECT content FROM raw_lines WHERE import_id=? ORDER BY sequence", (archive["id"],)
             ):
                 yield row["content"]
 
     def usage(self, sid, model_override="", import_id=None):
+        from .usage import analyze as analyze_usage
+
         self.get_session(sid)
         with self.connect() as db:
             db.execute("BEGIN")
@@ -694,7 +741,7 @@ class Store:
             "next_cursor": rows[limit - 1]["row_id"] if len(rows) > limit else None,
         }
 
-    def unified(self, sid, limit=200, after=0, kind="", q=""):
+    def unified(self, sid, limit=200, after=0, kind="", q="", *, include_parallel=True):
         from .unified import timeline
 
         self.get_session(sid)
@@ -704,7 +751,7 @@ class Store:
                 (sid,),
             )
             events = [self.event_row(row) for row in rows]
-        return timeline(events, limit, after, kind, q)
+        return timeline(events, limit, after, kind, q, include_parallel=include_parallel)
 
     def export(self, sid, kind=""):
         after = 0
@@ -825,6 +872,9 @@ class Store:
         }
 
     def parallel_groups(self, sid, source=""):
+        from .parallel import NOTE as PARALLEL_NOTE
+        from .parallel import parallel_groups
+
         self.get_session(sid)
         with self.connect() as db:
             rows = db.execute(

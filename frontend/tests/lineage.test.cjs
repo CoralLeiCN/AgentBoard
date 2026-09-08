@@ -75,7 +75,7 @@ test('late field responses cannot overwrite a newer inspector or its error state
   const source=readFileSync('frontend/app.js','utf8');
   let resolveOld;
   const nodes={'#event-source-note':{textContent:''},'#event-fields':{innerHTML:'',querySelectorAll:()=>[],replaceChildren(){this.innerHTML='';}}};
-  const ctx=vm.createContext({$:id=>nodes[id],esc,lineageTable:context.lineageTable,bindLineageSources:context.bindLineageSources,
+  const ctx=vm.createContext({hasFeature:()=>true,$:id=>nodes[id],esc,lineageTable:context.lineageTable,bindLineageSources:context.bindLineageSources,
     json:path=>path.includes('/old/')?new Promise(resolve=>resolveOld=resolve):Promise.resolve(result('new','current'))});
   vm.runInContext('let eventLineageRequest=0;'+source.slice(source.indexOf('async function loadEventLineage('),source.indexOf('function inspectEvent(')),ctx);
   const old=ctx.loadEventLineage({id:'old',session_id:'s',source:'codex_jsonl'});

@@ -3,8 +3,6 @@
 from collections import Counter, defaultdict
 from copy import deepcopy
 
-from .parallel import NOTE as PARALLEL_NOTE
-from .parallel import parallel_groups
 from .timestamps import timestamp_ns
 
 NOTE = (
@@ -100,19 +98,24 @@ def statistics(events):
     }
 
 
-def timeline(events, limit=200, after=0, kind='', q=''):
+def timeline(events, limit=200, after=0, kind='', q='', *, include_parallel=True):
     composed = compose(events)
-    groups = parallel_groups(composed)
-    # Explicit children must not appear parallel to their own enclosing call.
-    # The sources already partition rollout parents from item children.
-    for group in groups:
-        group['display_label'] = ('Items ' if group['source'] == 'codex_item' else 'Rollout ') + group['label']
+    parallel = None
+    if include_parallel:
+        from .parallel import NOTE as PARALLEL_NOTE
+        from .parallel import parallel_groups
+
+        groups = parallel_groups(composed)
+        # The sources partition rollout parents from item children.
+        for group in groups:
+            group['display_label'] = ('Items ' if group['source'] == 'codex_item' else 'Rollout ') + group['label']
+        parallel = {'items': groups, 'note': PARALLEL_NOTE, 'scope': 'full_unified_session'}
     filtered = [e for e in composed if (not kind or e['kind'] == kind)
                 and (not q or q.casefold() in (e['name'] + '\n' + e['text']).casefold())]
     return {
         'items': filtered[after:after + limit],
         'next_cursor': after + limit if after + limit < len(filtered) else None,
         'stats': statistics(composed),
-        'parallel': {'items': groups, 'note': PARALLEL_NOTE, 'scope': 'full_unified_session'},
+        'parallel': parallel,
         'note': NOTE,
     }

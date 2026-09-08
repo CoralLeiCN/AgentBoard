@@ -4,8 +4,10 @@ import re
 
 import httpx
 import pytest
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from agentboard.api import create_app
 from agentboard.classification import (
     PURPOSES,
     ClassificationLabel,
@@ -13,6 +15,7 @@ from agentboard.classification import (
     PurposeCategory,
     classification_schema,
 )
+from agentboard.config import Settings
 
 EXPECTED_CATEGORIES = [
     "writing", "coding", "bug-fixing", "research", "analysis", "creative-media", "guidance", "other",
@@ -80,8 +83,9 @@ def test_saved_schema_hash_matches_public_contract(client, imported):
     expected = hashlib.sha256(json.dumps(schema, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     assert result["output_schema_sha256"] == expected
     assert client.get(f"/api/v1/sessions/{imported}/classification-input").json()["output_schema_sha256"] == expected
-    client.app.state.settings.features = set()
-    assert client.get("/api/v1/classification-schema").status_code == 404
+    settings = Settings(database=client.app.state.settings.database, features=set())
+    with TestClient(create_app(settings)) as disabled:
+        assert disabled.get("/api/v1/classification-schema").status_code == 404
 
 
 @pytest.mark.parametrize("finish_reason,refusal", [("length", None), ("content_filter", None),

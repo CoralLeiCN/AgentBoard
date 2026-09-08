@@ -141,7 +141,7 @@ def test_v1_migration_preserves_ids_precision_cursor_and_updates(tmp_path):
     assert store.event("s", "open")["end_time"] == format_timestamp(10)
     assert store.get_session("s") == session
     with store.connect() as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 7
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 9
         assert not db.execute("PRAGMA foreign_key_check").fetchall()
         assert (
             dict((r["name"], r["type"]) for r in db.execute("PRAGMA table_info(events)"))["start_time"]

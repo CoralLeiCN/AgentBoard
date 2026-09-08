@@ -27,7 +27,7 @@ function setup(session,events) {
       return session;
     }})});
   vm.runInContext(source.slice(0,source.indexOf("$('#back').onclick")),context);
-  vm.runInContext("state.tab='inputs';state.features=['replay']",context);
+  vm.runInContext("state.tab='inputs';state.features=['inputs','replay']",context);
   return {context,node};
 }
 

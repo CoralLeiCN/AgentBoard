@@ -4,7 +4,9 @@ import sys
 
 import httpx
 import pytest
+from fastapi.testclient import TestClient
 
+from agentboard.api import create_app
 from agentboard.classification import (
     CATEGORIES,
     CLASSIFICATION_PROMPT,
@@ -12,6 +14,7 @@ from agentboard.classification import (
     classification_schema,
 )
 from agentboard.cli import main
+from agentboard.config import Settings
 from agentboard.domain import Event, Session
 from agentboard.models import ModelGateway, ModelServiceError
 
@@ -211,8 +214,9 @@ def test_feature_gate_and_unattributed_exclusion(client):
     assert client.post("/api/v1/sessions/telemetry/classify").status_code == 422
     assert client.get("/api/v1/sessions/telemetry/classification-input").status_code == 422
     assert client.app.state.store.classification_candidates() == []
-    client.app.state.settings.features = set()
-    assert client.get("/api/v1/sessions/telemetry/classification-input").status_code == 404
+    settings = Settings(database=client.app.state.settings.database, features=set())
+    with TestClient(create_app(settings)) as disabled:
+        assert disabled.get("/api/v1/sessions/telemetry/classification-input").status_code == 404
 
 
 def test_cli_batch_snapshot_skips_existing_and_continues_failures(client, monkeypatch, capsys):

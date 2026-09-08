@@ -4,6 +4,12 @@ from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import get_origin, get_type_hints
 
+from .features import DEFAULT_FEATURES
+
+
+def environment_list(name, default=""):
+    return [value.strip() for value in os.getenv(name, default).split(",") if value.strip()]
+
 
 @dataclass
 class Settings:
@@ -11,12 +17,9 @@ class Settings:
     host: str = "127.0.0.1"
     port: int = 4318
     reload: bool = False
-    otlp_enabled: bool = True
     database: str = field(default_factory=lambda: os.getenv("AGENTBOARD_DATABASE", "agentboard.db"))
     features: set[str] = field(
-        default_factory=lambda: set(
-            filter(None, os.getenv("AGENTBOARD_FEATURES", "classification,replay").split(","))
-        )
+        default_factory=lambda: set(environment_list("AGENTBOARD_FEATURES", ",".join(sorted(DEFAULT_FEATURES))))
     )
     api_token: str = field(default_factory=lambda: os.getenv("AGENTBOARD_API_TOKEN", ""))
     model_base_url: str = field(
@@ -35,9 +38,11 @@ class Settings:
             "AGENTBOARD_ALLOWED_HOSTS", "localhost,127.0.0.1,::1,testserver"
         ).split(",")
     )
-    plugins: tuple[str, ...] = field(
-        default_factory=lambda: tuple(filter(None, os.getenv("AGENTBOARD_PLUGINS", "").split(",")))
-    )
+    def __post_init__(self):
+        if os.getenv("AGENTBOARD_PLUGINS"):
+            raise ValueError("AGENTBOARD_PLUGINS is no longer supported; use built-in features")
+        if self.max_body_bytes <= 0 or self.ingest_concurrency <= 0:
+            raise ValueError("Body limit and ingestion concurrency must be positive")
 
     @classmethod
     def from_file(cls, path):

@@ -7,7 +7,7 @@ function setup(json) {
   const nodes={};
   const state={unclassified:['a','b','c'],classifying:false};
   let reloads=0;
-  const context=vm.createContext({state,json,$:id=>nodes[id]??=( {} ),
+  const context=vm.createContext({state,json,hasFeature:()=>true,$:id=>nodes[id]??=( {} ),
     loadSessions:async()=>reloads++,renderClassification:()=>{}});
   vm.runInContext(source.slice(source.indexOf('async function classifyPage('),source.indexOf('async function openSession(')),context);
   return {state,nodes,run:context.classifyPage,reloads:()=>reloads};

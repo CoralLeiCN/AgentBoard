@@ -5,7 +5,7 @@ Implemented 2026-09-06. Use the dev endpoint and a separate dataset for UI testi
 | Mode | Endpoint | Database | Live OTel ingestion |
 | --- | --- | --- | --- |
 | Existing local collector | `http://127.0.0.1:4318` | `agentboard.db` by default | Enabled |
-| [Dev config](../config/dev.toml) | `http://127.0.0.1:4319` | `.agentboard/dev.db` | Disabled; `/v1/logs` and `/v1/traces` return 403 |
+| [Dev config](../config/dev.toml) | `http://127.0.0.1:4319` | `.agentboard/dev.db` | Disabled; `/v1/logs` and `/v1/traces` are absent (404) |
 
 Codex's existing log and trace exporter destinations stay on port 4318. Starting a dev server does not change Codex configuration or redirect the running Codex process. The live collector can continue receiving telemetry while the dev dataset stays fixed. Codex supports separate configured log and trace exporters; see the [official telemetry documentation](https://developers.openai.com/codex/config-advanced#observability-and-telemetry).
 
@@ -103,9 +103,9 @@ Verification: [worktree tests](../backend/tests/test_worktree_setup.py) cover ac
 
 ## Configuration and boundaries
 
-`--config` works with every CLI command. Precedence is CLI overrides, explicit TOML values, environment defaults, then built-in defaults. TOML database paths resolve relative to the config file; CLI `--database` paths resolve relative to the working directory. Unknown keys and invalid types are rejected. The dev file pins its database, port, dummy model mode and empty plugin list, so inherited live database/model/plugin settings do not override them.
+`--config` works with every CLI command. Precedence is CLI overrides, explicit TOML values, environment defaults, then built-in defaults. TOML database paths resolve relative to the config file; CLI `--database` paths resolve relative to the working directory. Unknown keys and invalid types are rejected. The dev file pins its database, port, tracing feature allowlist, and dummy model mode, so inherited feature/model settings do not enable live receivers or model calls. Legacy plugin configuration is rejected; remove it before starting. The [feature catalog](features.md) describes the allowlist and dependencies.
 
-Dev mode blocks automatic OTel uploads but permits explicit imports and normal application actions. For an OTLP receiver experiment, use a separate temporary test configuration with `otlp_enabled=true` and controlled synthetic requests; do not point the global Codex exporters at it.
+The dev allowlist excludes `otlp_logs` and `otlp_traces` but enables explicit imports and tracing analysis. For a receiver experiment, use a separate temporary test configuration whose feature list includes the required OTLP signal and send controlled synthetic requests; do not point the global Codex exporters at it. To test classification or continuations, add the relevant feature and its dependencies to that temporary configuration.
 
 The dev config enables `reload = true`: Python changes under `backend/agentboard/` automatically restart the backend. Each worker retains the resolved config and CLI overrides, including the dev database and disabled telemetry ingestion. Refresh the internal browser after UI changes. Restart the command after TOML or environment changes; these settings are captured at startup. Database writes do not trigger reloads. The default collector has reload disabled.
 
