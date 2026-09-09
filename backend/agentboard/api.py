@@ -1,36 +1,16 @@
-import importlib
-import io
-import json
 import secrets
 import sqlite3
-import threading
-import time
-import zlib
+from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi import APIRouter, FastAPI, Query
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
-from google.protobuf.json_format import ParseError
-from google.protobuf.message import DecodeError
-from pydantic import BaseModel, Field
-from starlette.concurrency import run_in_threadpool
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from .adapters import adapters
-from .classification import (
-    TAXONOMY_VERSION,
-    ClassificationRequest,
-    ClassificationResult,
-    classification_schema,
-    taxonomy,
-)
 from .config import Settings
-from .models import ModelGateway, ModelServiceError, classification_input, classify_session, replay_session
-from .otlp import decode, normalize
-from .pricing import catalog as pricing_catalog
-from .store import Store
-from .timestamps import format_timestamp
+from .runtime import Runtime
 
 
 def frontend_directory():
@@ -39,46 +19,27 @@ def frontend_directory():
     return source if (source / "index.html").is_file() else Path(__file__).parent / "static"
 
 
-class ReplayRequest(BaseModel):
-    input_id: str
-    replacement: str = Field(min_length=1, max_length=30000)
+def _create_app(settings, runtime):
 
-
-async def bounded_body(request, limit):
-    chunks, size = [], 0
-    async for chunk in request.stream():
-        size += len(chunk)
-        if size > limit:
-            raise HTTPException(413, "Request exceeds body limit")
-        chunks.append(chunk)
-    body = b"".join(chunks)
-    encoding = request.headers.get("content-encoding", "identity")
-    if encoding == "gzip":
+    @asynccontextmanager
+    async def lifespan(app):
         try:
-            decoder = zlib.decompressobj(16 + zlib.MAX_WBITS)
-            body = decoder.decompress(body, limit + 1)
-            if len(body) > limit or decoder.unconsumed_tail:
-                raise HTTPException(413, "Decompressed request exceeds body limit")
-            if not decoder.eof or decoder.unused_data:
-                raise ValueError("Invalid gzip stream")
-        except (zlib.error, ValueError) as exc:
-            raise HTTPException(400, "Invalid gzip body") from exc
-    elif encoding != "identity":
-        raise HTTPException(415, "Only identity and gzip content encoding are supported")
-    return body
-
-
-def create_app(settings=None):
-    settings = settings or Settings()
-    app = FastAPI(title="AgentBoard", version="0.1.0", description="Agent-neutral trace and session API")
+            yield
+        finally:
+            runtime.close()
+    app = FastAPI(title="AgentBoard", version="0.1.0", description="Agent-neutral trace and session API", lifespan=lifespan)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
-    ingest_slots = threading.BoundedSemaphore(settings.ingest_concurrency)
-    app.state.ingest_slots = ingest_slots
-    store = Store(settings.database)
-    app.state.store, app.state.settings = store, settings
-    registry = adapters()
-    gateway = ModelGateway(settings)
-    app.state.gateway = gateway
+    app.state.ingest_slots = runtime.ingest_slots
+    store = runtime.store
+    app.state.store, app.state.settings, app.state.runtime = store, settings, runtime
+    if runtime.features & {"classification", "replay"}:
+        from .models import ModelServiceError
+
+        app.state.gateway = runtime.gateway()
+
+        @app.exception_handler(ModelServiceError)
+        async def model_error(request, exc):
+            return JSONResponse({"detail": str(exc)}, 502)
 
     @app.middleware("http")
     async def access(request, call_next):
@@ -106,19 +67,11 @@ def create_app(settings=None):
     async def invalid(request, exc):
         return JSONResponse({"detail": str(exc)}, 422)
 
-    @app.exception_handler(ModelServiceError)
-    async def model_error(request, exc):
-        return JSONResponse({"detail": str(exc)}, 502)
-
     @app.exception_handler(sqlite3.OperationalError)
     async def database_busy(request, exc):
         return JSONResponse(
             {"detail": "Storage unavailable; retry the request"}, 503, headers={"Retry-After": "1"}
         )
-
-    def feature(name):
-        if name not in settings.features:
-            raise HTTPException(404, f"{name} feature is disabled")
 
     @app.get("/health")
     def health():
@@ -126,16 +79,21 @@ def create_app(settings=None):
 
     @app.get("/api/v1/config")
     def config():
+        classification_taxonomy = None
+        if runtime.enabled("classification"):
+            from .classification import taxonomy
+
+            classification_taxonomy = taxonomy()
         return {
             "environment": settings.environment,
             "database_name": Path(settings.database).name,
-            "otlp_enabled": settings.otlp_enabled,
-            "features": sorted(settings.features),
-            "adapters": sorted(registry),
+            "features": sorted(runtime.features),
+            "feature_catalog": runtime.catalog.catalog(runtime.features),
+            "adapters": sorted(runtime.adapters),
             "model_mode": settings.model_mode,
             "model_api": settings.model_api,
             "max_import_bytes": settings.max_body_bytes,
-            "classification_taxonomy": taxonomy(),
+            "classification_taxonomy": classification_taxonomy,
         }
 
     @app.get("/api/v1/sessions")
@@ -162,172 +120,29 @@ def create_app(settings=None):
         store.get_session(sid)
         return store.events(sid, limit, after, kind, q, source, timeline)
 
-    @app.get("/api/v1/sessions/{sid}/inputs")
-    def inputs(sid: str, limit: int = Query(200, ge=1, le=1000), after: int = Query(0, ge=0), q: str = ""):
-        store.get_session(sid)
-        return store.events(sid, limit, after, "user", q)
-
-    @app.get("/api/v1/sessions/{sid}/unified")
-    def unified(
-        sid: str, limit: int = Query(200, ge=1, le=1000),
-        after: int = Query(0, ge=0), kind: str = "", q: str = "",
-    ):
-        return store.unified(sid, limit, after, kind, q)
-
     @app.get("/api/v1/sessions/{sid}/stats")
     def stats(sid: str, source: str = ""):
         return store.stats(sid, source)
 
-    @app.get("/api/v1/pricing")
-    def pricing():
-        return pricing_catalog()
+    from .ingestion import CaptureError
 
-    @app.get("/api/v1/sessions/{sid}/usage")
-    def usage(
-        sid: str, model_override: str = "", import_id: int | None = Query(None, ge=1),
-        after: int = Query(0, ge=0), limit: int = Query(200, ge=1, le=1000),
-    ):
-        report = store.usage(sid, model_override, import_id)
-        rows = [row for row in report["items"] if row["line_number"] > after]
-        report["items"] = rows[:limit]
-        report["next_cursor"] = rows[limit - 1]["line_number"] if len(rows) > limit else None
-        return report
+    @app.exception_handler(CaptureError)
+    async def captured_failure(request, exc):
+        return JSONResponse({"detail": str(exc), "capture_id": exc.capture_id,
+                             "capture_status": "retained", "normalization_status": "failed"},
+                            exc.status_code, headers={"X-AgentBoard-Capture-ID": str(exc.capture_id),
+                                                      **({"Retry-After": "1"} if exc.status_code == 503 else {})})
 
-    @app.get("/api/v1/sessions/{sid}/usage/export")
-    def usage_export(sid: str, model_override: str = "", import_id: int | None = Query(None, ge=1)):
-        return JSONResponse(store.usage(sid, model_override, import_id), headers={
-            "Content-Disposition": 'attachment; filename="agentboard-usage.json"',
-        })
-
-    @app.get("/api/v1/sessions/{sid}/parallel-groups")
-    def parallel_groups(sid: str, source: str = ""):
-        return store.parallel_groups(sid, source)
-
-    @app.get("/api/v1/sessions/{sid}/export")
-    def export(sid: str, kind: str = ""):
-        store.get_session(sid)
-        return StreamingResponse(
-            (json.dumps(e) + "\n" for e in store.export(sid, kind)),
-            media_type="application/x-ndjson",
-            headers={"Content-Disposition": 'attachment; filename="events.jsonl"'},
-        )
-
-    @app.post("/api/v1/import/{agent}")
-    async def ingest(agent: str, request: Request):
-        if agent not in registry:
-            raise HTTPException(404, "Unknown agent adapter")
-        if not ingest_slots.acquire(blocking=False):
-            raise HTTPException(503, "Ingestion capacity reached", headers={"Retry-After": "1"})
-        try:
-            body = await bounded_body(request, settings.max_body_bytes)
-
-            def ingest_body():
-                return store.ingest(registry[agent].parse(io.StringIO(body.decode("utf-8"))))
-
-            return await run_in_threadpool(ingest_body)
-        finally:
-            ingest_slots.release()
-
-    @app.get("/api/v1/sessions/{sid}/raw-imports")
-    def raw_imports(sid: str):
-        store.get_session(sid)
-        return {"items": store.raw_imports(sid)}
-
-    @app.get("/api/v1/sessions/{sid}/events/{event_id}/raw")
-    def event_raw(sid: str, event_id: str):
-        return store.event_raw(sid, event_id)
-
-    @app.get("/api/v1/sessions/{sid}/lineage")
-    def session_lineage(sid: str):
-        return store.field_lineage(sid)
-
-    @app.get("/api/v1/sessions/{sid}/events/{event_id}/lineage")
-    def event_lineage(sid: str, event_id: str):
-        return store.field_lineage(sid, event_id)
-
-    @app.get("/api/v1/sessions/{sid}/raw")
-    def raw_export(sid: str, import_id: int | None = Query(None, ge=1)):
-        archive = store.raw_import(sid, import_id)
-        return StreamingResponse(
-            store.export_raw(sid, archive["id"]),
-            media_type="application/x-ndjson",
-            headers={"Content-Disposition": 'attachment; filename="rollout.jsonl"'},
-        )
-
-    async def otlp(request, signal):
-        if not settings.otlp_enabled:
-            raise HTTPException(403, "Live OTLP ingestion is disabled in this environment; use an explicit import")
-        content_type = request.headers.get("content-type", "").split(";")[0]
-        if content_type not in ("application/json", "application/x-protobuf"):
-            raise HTTPException(415, "Use application/json or application/x-protobuf")
-        binary = content_type == "application/x-protobuf"
-        if not ingest_slots.acquire(blocking=False):
-            raise HTTPException(503, "Ingestion capacity reached", headers={"Retry-After": "1"})
-        try:
-            body = await bounded_body(request, settings.max_body_bytes)
-
-            def ingest_body():
-                try:
-                    return store.ingest(normalize(decode(body, signal, binary), signal))
-                except (ValueError, DecodeError, ParseError, TypeError, OverflowError) as exc:
-                    raise HTTPException(400, f"Invalid OTLP payload: {type(exc).__name__}") from exc
-
-            await run_in_threadpool(ingest_body)
-        finally:
-            ingest_slots.release()
-        return Response(b"", media_type=content_type) if binary else JSONResponse({})
-
-    @app.post("/v1/traces")
-    async def traces(request: Request):
-        return await otlp(request, "traces")
-
-    @app.post("/v1/logs")
-    async def logs(request: Request):
-        return await otlp(request, "logs")
-
-    @app.get("/api/v1/classification-schema")
-    def classifier_schema():
-        feature("classification")
-        return classification_schema()
-
-    @app.post("/api/v1/sessions/{sid}/classify", response_model=ClassificationResult, response_model_exclude_none=True)
-    def classify(sid: str):
-        feature("classification")
-        return classify_session(store, sid, gateway, settings.max_model_chars)
-
-    @app.get("/api/v1/sessions/{sid}/classification-input")
-    def classifier_input(sid: str):
-        feature("classification")
-        return classification_input(store, sid, settings.max_model_chars)
-
-    @app.put("/api/v1/sessions/{sid}/classification", response_model=ClassificationResult, response_model_exclude_none=True)
-    def external_classification(sid: str, body: ClassificationRequest):
-        feature("classification")
-        if store.get_session(sid)["identity_kind"] != "session":
-            raise ValueError("Purpose classification requires a session, not unattributed telemetry")
-        result = {
-            **body.model_dump(mode="json", exclude_none=True), "provider": "external", "dummy": False,
-            "taxonomy_version": TAXONOMY_VERSION, "classified_at": format_timestamp(time.time_ns()),
-            "content_origin": "model_generated", "provenance": "externally_asserted",
-        }
-        result = ClassificationResult.model_validate(result).model_dump(mode="json", exclude_none=True)
-        store.classify(sid, result)
-        return result
-
-    @app.post("/api/v1/sessions/{sid}/replay")
-    def replay(sid: str, body: ReplayRequest):
-        feature("replay")
-        return replay_session(store, sid, body.input_id, body.replacement, gateway, settings.max_model_chars)
-
-    @app.post("/api/v1/sessions/{sid}/codex-plan")
-    def codex_plan(sid: str, body: ReplayRequest):
-        feature("replay")
-        from .resume import make_plan
-
-        return make_plan(store, sid, body.input_id, body.replacement)
-
-    for module in settings.plugins:
-        importlib.import_module(module).register(app=app, store=store, adapters=registry, settings=settings)
+    owned = {(method, route.path) for route in app.routes if isinstance(route, APIRoute)
+             for method in route.methods}
+    try:
+        for feature in runtime.catalog.enabled_features(runtime.features):
+            router = feature.router_factory(runtime.services_for(feature.name))
+            validate_router(feature.name, router, owned)
+            app.include_router(router)
+    except BaseException:
+        runtime.close()
+        raise
 
     static = frontend_directory()
     app.mount("/static", StaticFiles(directory=static), name="static")
@@ -337,3 +152,56 @@ def create_app(settings=None):
         return FileResponse(static / "index.html")
 
     return app
+
+
+def create_app(settings=None, *, catalog=None):
+    settings = settings or Settings()
+    runtime = Runtime(settings, catalog)
+    try:
+        return _create_app(settings, runtime)
+    except BaseException:
+        runtime.close()
+        raise
+
+
+# Allowed routes are owned by core and validated before mounting.
+FEATURE_ROUTES = {'import': [('POST', '/api/v1/import/{agent}')],
+ 'otlp_logs': [('POST', '/v1/logs')],
+ 'otlp_traces': [('POST', '/v1/traces')],
+ 'inputs': [('GET', '/api/v1/sessions/{sid}/inputs')],
+ 'unified_timeline': [('GET', '/api/v1/sessions/{sid}/unified')],
+ 'parallel_groups': [('GET', '/api/v1/sessions/{sid}/parallel-groups')],
+ 'field_lineage': [('GET', '/api/v1/sessions/{sid}/lineage'),
+                   ('GET', '/api/v1/sessions/{sid}/events/{event_id}/lineage')],
+ 'raw_archive': [('GET', '/api/v1/sessions/{sid}/raw-imports'),
+                 ('GET', '/api/v1/sessions/{sid}/events/{event_id}/raw'),
+                 ('GET', '/api/v1/sessions/{sid}/raw'),
+                 ('GET', '/api/v1/captures'),
+                 ('GET', '/api/v1/captures/{capture_id}'),
+                 ('GET', '/api/v1/captures/{capture_id}/raw')],
+ 'export': [('GET', '/api/v1/sessions/{sid}/export')],
+ 'classification': [('GET', '/api/v1/classification-schema'),
+                    ('POST', '/api/v1/sessions/{sid}/classify'),
+                    ('GET', '/api/v1/sessions/{sid}/classification-input'),
+                    ('PUT', '/api/v1/sessions/{sid}/classification')],
+ 'replay': [('POST', '/api/v1/sessions/{sid}/replay')],
+ 'native_resume': [('POST', '/api/v1/sessions/{sid}/codex-plan')],
+ 'token_usage': [('GET', '/api/v1/pricing'),
+                 ('GET', '/api/v1/sessions/{sid}/usage'),
+                 ('GET', '/api/v1/sessions/{sid}/usage/export')]}
+
+
+def validate_router(feature, router, owned):
+    if not isinstance(router, APIRouter):
+        raise ValueError("Feature must return an APIRouter")
+    if router.on_startup or router.on_shutdown or type(router.lifespan_context) is not type(APIRouter().lifespan_context):
+        raise ValueError("Feature lifecycle hooks are core-owned")
+    allowed = set(FEATURE_ROUTES[feature])
+    for route in router.routes:
+        if not isinstance(route, APIRoute):
+            raise ValueError("Feature may only contribute HTTP routes")
+        for method in route.methods:
+            key = (method, route.path)
+            if key not in allowed or key in owned:
+                raise ValueError(f"Unowned or duplicate feature route: {method} {route.path}")
+            owned.add(key)

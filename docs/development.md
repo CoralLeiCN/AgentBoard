@@ -5,7 +5,7 @@ Implemented 2026-09-06. Use the dev endpoint and a separate dataset for UI testi
 | Mode | Endpoint | Database | Live OTel ingestion |
 | --- | --- | --- | --- |
 | Existing local collector | `http://127.0.0.1:4318` | `agentboard.db` by default | Enabled |
-| [Dev config](../config/dev.toml) | `http://127.0.0.1:4319` | `.agentboard/dev.db` | Disabled; `/v1/logs` and `/v1/traces` return 403 |
+| [Dev config](../config/dev.toml) | `http://127.0.0.1:4319` | `.agentboard/dev.db` | Disabled; `/v1/logs` and `/v1/traces` are absent (404) |
 
 Codex's existing log and trace exporter destinations stay on port 4318. Starting a dev server does not change Codex configuration or redirect the running Codex process. The live collector can continue receiving telemetry while the dev dataset stays fixed. Codex supports separate configured log and trace exporters; see the [official telemetry documentation](https://developers.openai.com/codex/config-advanced#observability-and-telemetry).
 
@@ -61,7 +61,7 @@ Implemented 2026-09-07. The main checkout holds the fixed shared `.agentboard/ba
 uv run python scripts/seed_dev_data.py /absolute/path/to/rollout-one.jsonl /absolute/path/to/rollout-two.jsonl
 ```
 
-The [seed script](../scripts/seed_dev_data.py) imports all records through the normal adapter, verifies SHA-256 equality between each source and its raw export, checks SQLite integrity, creates a timestamped recovery database under the main checkout's `.agentboard/checkpoints/`, then snapshots that checkpoint to `baseline.db`. Source paths and hashes live in the database's `dev_seed_sources` table. It refuses existing destinations and publishes no baseline after a failed import. A changed source fails verification; select fixed completed files. The checkpoint is a separate local recovery copy, not protection against loss of the disk.
+The [seed script](../scripts/seed_dev_data.py) imports complete files through core capture and normalization with field lineage enabled, verifies SHA-256 equality between each source and its raw export, checks SQLite integrity, creates a timestamped recovery database under the main checkout's `.agentboard/checkpoints/`, then snapshots that checkpoint to `baseline.db`. Captured payloads and attempt outcomes survive in both copies. Source paths and hashes live in the database's `dev_seed_sources` table. It refuses existing destinations and publishes no baseline after a failed import. A changed source fails verification; select fixed completed files. The checkpoint is a separate local recovery copy, not protection against loss of the disk.
 
 **Retain all local evidence.** Preserve every line, message, tool output, unknown event, internal input, and compaction/rollback record in the selected files. Normalized events cover recognized mappings; the complete `raw_lines` archive retains unsupported records too. Do not cap events, take excerpts, redact, summarize, or delete history to reduce this dataset. This preserves the complete available rollout file, not unrecorded upstream model state or separate telemetry that was never imported. Seeding and snapshotting make no model request.
 
@@ -103,9 +103,9 @@ Verification: [worktree tests](../backend/tests/test_worktree_setup.py) cover ac
 
 ## Configuration and boundaries
 
-`--config` works with every CLI command. Precedence is CLI overrides, explicit TOML values, environment defaults, then built-in defaults. TOML database paths resolve relative to the config file; CLI `--database` paths resolve relative to the working directory. Unknown keys and invalid types are rejected. The dev file pins its database, port, dummy model mode and empty plugin list, so inherited live database/model/plugin settings do not override them.
+`--config` works with every CLI command. Precedence is CLI overrides, explicit TOML values, environment defaults, then built-in defaults. TOML database paths resolve relative to the config file; CLI `--database` paths resolve relative to the working directory. Unknown keys and invalid types are rejected. The dev file pins its database, port, tracing feature allowlist, and dummy model mode, so inherited feature/model settings do not enable live receivers or model calls. Legacy plugin configuration is rejected; remove it before starting. The [feature catalog](features.md) describes the allowlist and dependencies.
 
-Dev mode blocks automatic OTel uploads but permits explicit imports and normal application actions. For an OTLP receiver experiment, use a separate temporary test configuration with `otlp_enabled=true` and controlled synthetic requests; do not point the global Codex exporters at it.
+The dev allowlist excludes `otlp_logs` and `otlp_traces` but enables explicit imports and tracing analysis. For a receiver experiment, use a separate temporary test configuration whose feature list includes the required OTLP signal and send controlled synthetic requests; do not point the global Codex exporters at it. To test classification or continuations, add the relevant feature and its dependencies to that temporary configuration.
 
 The dev config enables `reload = true`: Python changes under `backend/agentboard/` automatically restart the backend. Each worker retains the resolved config and CLI overrides, including the dev database and disabled telemetry ingestion. Refresh the internal browser after UI changes. Restart the command after TOML or environment changes; these settings are captured at startup. Database writes do not trigger reloads. The default collector has reload disabled.
 

@@ -177,12 +177,6 @@ def test_features_auth_and_same_origin(tmp_path):
         assert c.get("/", headers={"Host": "attacker.example"}).status_code == 400
 
 
-def test_optional_plugin(tmp_path):
-    with TestClient(
-        create_app(Settings(database=str(tmp_path / "plugin.db"), plugins=("examples.extension",)))
-    ) as c:
-        assert c.get("/api/v1/extensions/example").json()["adapters"] == ["codex"]
-
 
 def test_openai_client_local_service(monkeypatch):
     import openai

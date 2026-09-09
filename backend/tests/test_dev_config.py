@@ -10,6 +10,7 @@ from agentboard.api import create_app
 from agentboard.cli import main
 from agentboard.config import Settings
 from agentboard.domain import Session
+from agentboard.features import DEFAULT_FEATURES
 from agentboard.snapshot import snapshot_database
 from agentboard.store import Store
 
@@ -20,17 +21,18 @@ DEV = ROOT / 'config/dev.toml'
 def test_dev_settings_override_live_environment_and_resolve_paths(monkeypatch, tmp_path):
     monkeypatch.setenv('AGENTBOARD_DATABASE', str(tmp_path / 'live.db'))
     monkeypatch.setenv('AGENTBOARD_MODEL_MODE', 'local')
-    monkeypatch.setenv('AGENTBOARD_PLUGINS', 'live_plugin')
+    monkeypatch.setenv('AGENTBOARD_FEATURES', 'otlp_logs,otlp_traces')
     settings = Settings.from_file(DEV)
     assert settings.port == 4319 and settings.host == '127.0.0.1'
     assert settings.database == str(ROOT / '.agentboard/dev.db')
     assert settings.environment == 'dev' and settings.model_mode == 'dummy'
-    assert not settings.otlp_enabled and settings.plugins == ()
+    assert not {'otlp_logs', 'otlp_traces'} & settings.features
+    assert settings.features == DEFAULT_FEATURES - {'otlp_logs', 'otlp_traces'}
     assert settings.reload and not Settings().reload
-    assert Settings().port == 4318 and Settings().otlp_enabled
+    assert Settings().port == 4318 and {'otlp_logs', 'otlp_traces'} <= Settings().features
 
 
-@pytest.mark.parametrize('contents', ['porrt = 4319', 'port = "4319"', 'port = 0', 'otlp_enabled = "false"'])
+@pytest.mark.parametrize('contents', ['porrt = 4319', 'port = "4319"', 'port = 0', 'otlp_enabled = false', 'features = "import"'])
 def test_bad_config_fails_before_opening_database(tmp_path, contents):
     path = tmp_path / 'dev.toml'
     path.write_text(contents)
@@ -44,12 +46,12 @@ def test_dev_rejects_live_telemetry_but_supports_explicit_imports(tmp_path):
     with TestClient(create_app(settings)) as client:
         for route in ('/v1/traces', '/v1/logs'):
             response = client.post(route, json={})
-            assert response.status_code == 403 and 'disabled' in response.json()['detail']
+            assert response.status_code == 404
         assert client.get('/api/v1/sessions?identity_kind=all').json()['total'] == 0
         response = client.post('/api/v1/import/codex', content=(ROOT / 'examples/fixtures/codex-session.jsonl').read_bytes())
         assert response.status_code == 200
         config = client.get('/api/v1/config').json()
-        assert config['environment'] == 'dev' and not config['otlp_enabled']
+        assert config['environment'] == 'dev' and not {'otlp_logs', 'otlp_traces'} & set(config['features'])
         assert config['database_name'] == 'dev.db'
 
 
@@ -66,7 +68,7 @@ def test_cli_uses_dev_port_and_database(monkeypatch, tmp_path):
     monkeypatch.setattr(uvicorn, 'run', capture)
     monkeypatch.setattr(sys, 'argv', ['agentboard', '--config', str(DEV), '--database', str(tmp_path / 'dev.db'), 'serve'])
     main()
-    assert captured['port'] == 4319 and not captured['settings'].otlp_enabled
+    assert captured['port'] == 4319 and not {'otlp_logs', 'otlp_traces'} & captured['settings'].features
     assert captured['settings'].database == str(tmp_path / 'dev.db')
     assert captured['reload'] and captured['factory']
     assert captured['reload_dirs'] == [str(ROOT / 'backend/agentboard')]

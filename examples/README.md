@@ -4,12 +4,12 @@ From the repository root:
 
 ```sh
 uv sync --extra dev
-uv run agentboard serve
+uv run agentboard --config config/dev.toml serve
 # In another terminal:
-uv run python examples/01_import.py
+AGENTBOARD_URL=http://127.0.0.1:4319 uv run python examples/01_import.py
 ```
 
-Numbered examples run independently, import synthetic fixtures idempotently, and use the frontend’s public API. Set `AGENTBOARD_URL` for the server and `AGENTBOARD_API_TOKEN` for authentication. Model examples need the default `classification,replay` features enabled.
+Numbered examples run independently, import synthetic fixtures idempotently, and use the frontend’s public API. Set `AGENTBOARD_URL` for the server and `AGENTBOARD_API_TOKEN` for authentication. The checked-in dev TOML overrides environment feature settings: to run every example, copy it to a temporary configuration, keep a separate database and port 4319, and add `otlp_logs`, `otlp_traces`, `classification`, `replay`, and `native_resume` to its feature array. Start the service with that configuration. Model and native continuation features are off by default; see the [feature catalog](../docs/features.md).
 
 | Use case | Demo |
 | --- | --- |
@@ -23,12 +23,13 @@ Numbered examples run independently, import synthetic fixtures idempotently, and
 | Filter and extract human-attributed inputs | [07_user_inputs.py](07_user_inputs.py); attribution walkthrough below |
 | Native Codex branch from a preceding completed turn | [08_native_codex_resume.py](08_native_codex_resume.py); prints a plan, because synthetic IDs are not native Codex sessions |
 | Independent model worker/coding-session classification | [09_external_classification.py](09_external_classification.py) |
-| Frontend visualization | Open [the UI](http://127.0.0.1:4318), choose **Load demo**, then Timeline / User inputs / All events |
-| Optional plugin | Start with `AGENTBOARD_PLUGINS=examples.extension uv run agentboard serve`; fetch `/api/v1/extensions/example` |
-| Minimal tracing-only configuration | Start with `AGENTBOARD_FEATURES= uv run agentboard serve`; classification/replay return 404 and UI controls disappear |
+| Frontend visualization | Open [the dev UI](http://127.0.0.1:4319), choose **Load demo**, then Timeline / User inputs / All events |
+| Configurable tracing | `agentboard features` lists the catalog; an empty allowlist keeps core browsing/UI, and `features = ["import"]` adds complete capture and normalized rollout import. See [configuration examples](../docs/features.md#configuration) |
+| Retained capture inspection/reprocessing | `agentboard captures`; `agentboard capture-export ID > payload.bin`; `agentboard reprocess ID`; [semantics](../docs/data-lineage.md#35-raw-archive-and-export) |
+| Feature startup and concurrent import/read probe | `uv run python examples/feature_benchmark.py --requests 20`; [measurement limits](../docs/architecture-review.md) |
 | Reproducible storage efficiency probe | `uv run python examples/benchmark.py --events 10000` |
 
-Models default to `http://localhost:30000/v1`; the OpenAI client discovers `/models` and calls Chat Completions by default. Set `AGENTBOARD_MODEL_API=responses` for a Responses endpoint; [live classification tests](../docs/session-purpose.md#live-responses-api-test) are opt-in. Unavailable-service results carry `dummy: true`, preserving API/store/replay checks. Set server `AGENTBOARD_MODEL_MODE=dummy` to force fallback or `local` to require a model. The independent worker also reads its own environment settings. Tests verify real-client discovery/completion through mock HTTP without an external service.
+Models default to `http://localhost:30000/v1`; the OpenAI client discovers `/models` and calls Chat Completions by default. Set `AGENTBOARD_MODEL_API=responses` for a Responses endpoint; [live classification tests](../docs/session-purpose.md#live-responses-api-test) are opt-in. Unavailable-service results carry `dummy: true`, preserving API/store/replay checks. The dev config pins `model_mode = "dummy"`; set `model_mode = "local"` in the temporary configuration to require a model. `AGENTBOARD_MODEL_MODE` applies when TOML does not override it. The independent worker also reads its own environment settings. Tests verify real-client discovery/completion through mock HTTP without an external service.
 
 A separate [real Codex excerpt](fixtures/codex-real-excerpt.md) contains 13 reviewed, redacted records from a local CLI 0.153.4 session, with original line mapping and preserved timings. Import it explicitly into the dev dataset to inspect recorded item lifetimes and custom tool calls. **Load demo** continues to load the synthetic fixture “Fix the checkout total rounding bug” (`demo-codex-checkout-usage-v1`).
 

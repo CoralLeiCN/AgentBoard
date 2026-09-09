@@ -1,57 +1,57 @@
 # Architecture
 
-[Data lineage](data-lineage.md) specifies exact mappings and merge rules; [data-quality gaps](data-quality-gaps.md) identify limits on completeness, identity, and reproducibility.
+Implemented first-party architecture, reviewed 2026-09-08. The [principles](principles.md) guide tradeoffs; the [modular feature plan](modular-features-plan.md) records the design decisions. [Data lineage](data-lineage.md) defines mappings and [data-quality gaps](data-quality-gaps.md) limits their interpretation.
 
 ```mermaid
 flowchart LR
-  C[Codex rollout files] --> I[Streaming agent adapter]
-  O[Codex async OTel exporter] --> H[OTLP HTTP logs and traces]
-  I --> N[Session and Event contract]
-  H --> N
-  N --> S[SQLite Store]
-  S --> A[Versioned Python API]
-  A --> U[Bundled browser UI]
-  A --> E[External analysis]
-  A --> M[Optional model gateway]
-  M --> L[Local OpenAI-compatible model or dummy]
-  R[Explicit resume CLI] --> X[Codex app-server fork and turn]
+  C[Configured file imports and OTLP receivers] --> A[Core admission and complete raw capture]
+  A --> R[(Original payloads and capture outcomes)]
+  A --> N[Source adapters and normalization]
+  N --> S[(Canonical sessions, events and evidence links)]
+  R --> P[Explicit reprocessing]
+  P --> A
+  R --> V[Core services]
+  S --> V
+  V --> H[Core browsing and optional feature routers]
+  H --> U[Bundled UI and external API clients]
+  V --> L[Shared CLI]
 ```
 
-## Boundaries
+## Ownership and components
 
-| Module | Responsibility and reason for separation |
+| Component | Responsibility |
 | --- | --- |
-| [`domain.py`](../backend/agentboard/domain.py) | Agent-neutral Pydantic session/event contract: source, timing quality, optional span hierarchy, text, attributes. No Codex-specific database columns. |
-| [`adapters/codex.py`](../backend/agentboard/adapters/codex.py) | Incremental rollout normalization; isolates source-schema changes. Pending calls can grow with record count; the parser does not buffer the file. Unknown types are omitted from normalized events but retained in the raw archive. The stream includes `RawLine`/`RawTraceEnd` markers alongside `Session`/`Event` values; storage archives them in the same transaction. |
-| [`otlp.py`](../backend/agentboard/otlp.py) | Protobuf/JSON validation and normalization; retains decoded record/resource/scope evidence. Separates transport measurements, output streaming, and estimated gaps. |
-| [`store.py`](../backend/agentboard/store.py) | SQLite schema, indexes, transactions, cursors, grouped overlap aggregation, streaming reads. Keep SQL here so storage can change without rewriting routes/adapters. SQLite is the only shipped backend. |
-| [`parallel.py`](../backend/agentboard/parallel.py) | Derives source/quality/turn/trace/parent-scoped tool-overlap groups from normalized intervals. Shared by API and UI; does not mutate events or require schema migration. |
-| [`usage.py`](../backend/agentboard/usage.py), [`pricing.py`](../backend/agentboard/pricing.py) | Reads one immutable raw archive to derive usage and dated Standard API value. Prices use decimal arithmetic; no model calls, live pricing fetches, ingestion changes or schema migrations. Each report scans the archive and retains usage rows in memory; it does not cache or materialize aggregates. |
-| [`api.py`](../backend/agentboard/api.py) | Shared routes, auth, host/origin checks, body limits, backpressure, configuration, plugin registration. CPU/DB/model work runs in worker threads. Acknowledgment follows commit under WAL/`synchronous=NORMAL`; power-loss durability follows SQLite NORMAL semantics. |
-| [`models.py`](../backend/agentboard/models.py) | Optional OpenAI client, bounded transcript construction, validated purpose classification, text replay. The [shared taxonomy](../backend/agentboard/classification.py) also serves external agents and UI filters. No ingestion-time model calls or tool execution. |
-| [`prompts/`](../backend/agentboard/prompts/README.md) | Reusable model instructions as bundled text templates. Classification renders its template with the shared category definitions; package-resource loading works from source and installed wheels. |
-| [`resume.py`](../backend/agentboard/resume.py) | Explicit CLI-only Codex JSON-lines RPC over stdio. Neither modifies rollout files nor exposes remote command execution. |
-| [`frontend/`](../frontend/) | Plain-JavaScript UI over the shared API; no separate frontend API/build pipeline. Source checkouts serve these files directly, and wheel builds bundle them as package data. Codex field origins and source pointers come from the backend lineage API; other-source descriptions remain display-time mappings. See [field lineage](data-lineage.md#36-per-field-codex-lineage). |
+| [Feature catalog](../backend/agentboard/features/catalog.py), [adapter catalog](../backend/agentboard/adapters/catalog.py) | Frozen first-party declarations, dependency validation, lazy factories. Metadata inspection opens no database or optional client. No dynamic module discovery. |
+| [Runtime](../backend/agentboard/runtime.py) | Validate before storage construction; construct enabled adapters/services; own ingestion concurrency and resource cleanup. HTTP lifespan and CLI context manager both close the runtime, including failed construction. |
+| [API](../backend/agentboard/api.py), [HTTP ingestion](../backend/agentboard/http_ingestion.py) | Own app, middleware, core routes, body limits, backpressure, errors, route ownership validation, and static UI. Features cannot contribute middleware, mounts, or lifecycle hooks through their router contract. |
+| [Ingestion](../backend/agentboard/ingestion.py), [capture repository](../backend/agentboard/capture_store.py) | Commit complete original bytes before decoding/normalization. Track separate capture attempts and interpretation outcomes; support explicit reparsing. Core owns capture SQL and policy. |
+| [Domain](../backend/agentboard/domain.py), [Codex adapter](../backend/agentboard/adapters/codex.py), [OTLP](../backend/agentboard/otlp.py) | Shared session/event contract and source-specific normalization. Unknown content remains in capture even if omitted from canonical events. Optional Codex field mapping is resolved at startup. |
+| [Store](../backend/agentboard/store.py) | Core schema/migrations, canonical transactions, indexes, identity reconciliation, raw line archives and evidence links. SQLite is the only shipped backend; connections close after each operation. Streaming read connections permit sequential HTTP worker handoff; write connections retain thread affinity. |
+| [Services](../backend/agentboard/services.py), [feature modules](../backend/agentboard/features/) | Each router receives a frozen set of named operations and relevant flags. No application, runtime, mutable registry, raw Store, or SQLite handle is passed to features. These are internal trusted-code interfaces, not a security sandbox. |
+| [Parallel analysis](../backend/agentboard/parallel.py), [unified timeline](../backend/agentboard/unified.py), [usage](../backend/agentboard/usage.py) | Pure/on-demand derived analysis behind core services. Usage scans a retained rollout and keeps usage rows in memory; no materialized aggregate cache exists. |
+| [Model gateway](../backend/agentboard/models.py), [prompts](../backend/agentboard/prompts/README.md), [resume](../backend/agentboard/resume.py) | Optional classification/replay; clients are scoped to calls. Native execution remains explicit CLI-only RPC. No ingestion-time model calls. |
+| [Frontend](../frontend/) | Core owns markup, styling and navigation; one `/api/v1/config` catalog drives optional controls and requests. Static files ship in wheels; no frontend build/runtime dependency. |
 
-## Identity and ordering
+## Capture, identity and transactions
 
-Codex metadata or OTel correlation attributes identify sessions. Without tenant namespaces, all service users share data. Deterministic IDs deduplicate identical reimports and appended records: rollout IDs use session/line/discriminator; measured items use item ID; OTel spans use trace/span IDs; logs use decoded-record hashing. Sources remain separate. Exact fallback/hash/merge rules are in [lineage §8](data-lineage.md#8-identity-transactions-and-upgrades).
+The source/receiver allowlist determines what enters the service. Every supplied payload accepted from those sources is captured independently of optional analysis or inspection. `raw_archive` controls access only; `field_lineage` and `token_usage` can use core evidence without it. `features = []` keeps existing-data browsing without starting unconfigured collection. [Feature rules](features.md).
 
-Reimport is not synchronization of rewritten history; use a new session identity for such history. Existing completed rows are generally unchanged. Database `row_id`, source `sequence`, and timestamps express ingestion, record, and temporal order respectively. Calls emit on result or unfinished at EOF, so these orders differ. Reimport can complete old open rows; advanced pagination cursors do not resend them.
+A raw capture transaction commits before lossy interpretation. Successful normalization commits canonical rows and Codex line archives separately; interpretation failure rolls those derived writes back while original bytes survive. Repeated payloads deduplicate bytes but record each attempt. `pending` means completion was not recorded, including interrupted processes; it is not proof of success or failure. [Exact formats, failures, retry and migration](data-lineage.md#35-raw-archive-and-export).
 
-## Failure and load behavior
+Schema v9 adds capture tables and preserves earlier archives without inventing past capture attempts or missing OTLP bytes. Normalization still uses existing IDs, mapping versions and reimport reconciliation; reprocessing does not universally replace conflicting history. [Identity and upgrade rules](data-lineage.md#8-identity-transactions-and-upgrades).
 
-HTTP buffers a bounded body, including gzip expansion; CLI imports stream larger files. Default ingestion concurrency is four per process. Saturation returns 503 before reading the body; SQLite lock timeout is five seconds, with retryable HTTP 503. A parse failure rolls back its file/batch. Envelope errors identify the line; deeper mapping errors may lack that context.
+## Failure, load and lifecycle
 
-Historical imports install no hooks or watchers and add no instrumentation to the agent path. Reimport explicitly or use Codex's asynchronous OTel exporter. SDK exporters/collectors own retry and queue policies; AgentBoard makes no measured agent-latency improvement claim.
+HTTP holds at most the configured compressed body and bounded decoded body; default limit is 32 MiB and admission concurrency four per process. Unsupported media/encoding and oversized unaccepted bodies fail explicitly. Saturation returns 503 before reading a body. CLI snapshots each binary file to temporary disk and captures it in bounded chunks before parsing, so larger files need disk capacity but no full-file memory buffer. Parser pending-call state can still grow with the file.
 
-Model calls run synchronously in worker threads: configurable request timeout (30 seconds by default), two-second discovery timeout, no SDK retries. The framework thread pool limits concurrency; there is no durable scheduler. Oversized replay contexts fail; classification records truncation. Expensive service workloads may use an optional job plugin, keeping queues unnecessary locally.
+Original capture commits use SQLite WAL with `synchronous=FULL`. Canonical data and outcome updates use `NORMAL`; after interruption they can be retried from retained bytes. Durability still depends on the filesystem/storage honoring SQLite synchronization. SQLite has one writer and a five-second lock timeout; contention returns retryable 503. No durable scheduler, automatic capture reprocessing, retention, or pruning exists. Successful Codex imports currently store both the transport payload and line archive; growing snapshots can multiply storage cost.
 
-## Evolution without speculative infrastructure
+Core activates enabled routers in dependency order and rejects duplicate/unowned routes. Each service is built once per runtime; disabled factories do not run. Core's exit stack owns future long-lived resources; current database connections and model clients close within operations. Features change on restart.
 
-1. Register another `parse(lines)` adapter through an enabled plugin.
-2. Add optional analysis routes/plugins without changing ingestion or splitting the shared API.
-3. For larger deployments, evaluate storage/migrations behind the same API. Before claiming multi-tenant readiness, address collector buffering, authenticated tenant IDs, quotas, retention, observability, and realistic load tests.
-4. If profiling justifies it, replace normalization/ingestion/storage components in another language behind the existing contracts; keep classification/UI APIs independent.
+Models use worker threads with configurable timeout, bounded text context, and no SDK retries. Classification records truncation; oversized replay fails. Historical imports add no agent-side hooks. Exporter retry/buffering belongs to the upstream SDK/collector; no agent-latency reduction is claimed.
 
-These are extension paths, not selected implementations; see the [backlog](backlog.md). The initial version has no distributed tracing database, plugin marketplace, scheduler, custom agent SDK, or generalized workflow engine.
+## Performance and remaining limits
+
+[Review measurements](architecture-review.md) compare fixed profiles before and after the refactor. They are a small retry workload, not a capacity certification. Representative growing datasets, optional-analysis load, export/tail latency, and numerical budgets remain unmeasured or unagreed. Complete capture cannot be traded away to improve these results.
+
+This is one authenticated shared workspace, with plaintext storage and no tenant isolation. [Correctness gaps](data-quality-gaps.md) remain explicit: inferred input/timing semantics, unsupported-record reporting, conflicting-history corrections, cross-source lineage and reproducible analysis snapshots. Future first-party adapters or profiled component replacements should preserve capture and API contracts. Third-party packaging, RPC workers and larger service infrastructure remain [deferred](backlog.md).

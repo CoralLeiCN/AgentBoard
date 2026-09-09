@@ -1,8 +1,8 @@
 # AgentBoard product specification
 
-Updated: 2026-09-07
+Updated: 2026-09-08
 
-Agreed requirements, implementation status, and acceptance criteria for AgentBoard. Codex compatibility is limited to supported source variants.
+Agreed requirements, implementation status, and acceptance criteria for AgentBoard, guided by the [product and design principles](principles.md). Codex compatibility is limited to supported source variants.
 
 [Data lineage](data-lineage.md) defines current mappings; [data-quality gaps](data-quality-gaps.md) track correctness concerns separately from deferred capabilities. Implemented does not imply complete coverage or reproducible evaluation.
 
@@ -15,7 +15,7 @@ Status meanings:
 
 ## 1. Purpose and scope
 
-AgentBoard explains prompts, tool use, timing, uncertainty, and edited continuations. Its primary workflow is importing Codex sessions/traces to analyze LLM and tool time. Keep additional features optional so tracing stays lightweight.
+AgentBoard explains prompts, tool use, timing, uncertainty, and edited continuations. Its primary workflow is importing Codex sessions/traces to analyze LLM and tool time. Keep the dashboard, core event browsing, and complete raw capture mandatory. Configure ingestion sources explicitly; analysis, inspection, export, and continuation capabilities are optional. The [feature catalog](features.md) defines current IDs, defaults, dependencies, and disable behavior; §1.1 records capture and performance acceptance.
 
 The dashboard and external clients share one HTTP API over local session data. Codex is the first agent; initial deployment is one shared workspace on a developer machine or modest private service.
 
@@ -23,12 +23,14 @@ Core requirements:
 
 | ID | Requirement | Status |
 | --- | --- | --- |
-| RUN-01 | Start the API, dashboard, and telemetry receiver as one service. | Implemented |
+| RUN-01 | Start the API, mandatory dashboard, and enabled telemetry receivers as one service. | Implemented |
 | IMP-01 | Import Codex rollout files and directories, including archived history. | Implemented |
 | IMP-02 | Reimport safely, handling duplicates and growing sessions. | Implemented |
 | IMP-03 | Limit an import to a chosen recent subset. | Implemented |
 | IMP-04 | Report per-file outcomes and an end-of-run summary. | Implemented |
 | IMP-05 | Preserve raw evidence and handle Codex rollout format changes explicitly. | Accepted policy; partially implemented (§3.5) |
+| RAW-01 | Always preserve complete raw data from configured ingestion sources, independently of optional features, for future inference and calculation. | Implemented for configured Codex/OTLP sources; limits in §1.1 |
+| PERF-01 | Build a high-performance service while prototyping in Python, preserving complete raw data. | Structural improvements and fixture measurements implemented; representative loads/budgets remain open (§1.1) |
 | TEL-01 | Receive live OTLP/HTTP logs and traces from Codex. | Implemented |
 | UI-01 | Browse, search, filter, and inspect sessions and their events. | Implemented |
 | TIME-01 | Separate elapsed, LLM, tool, and waiting-for-user time. | Implemented, with inference limitations |
@@ -40,8 +42,24 @@ Core requirements:
 | API-01 | Expose session data, timing, input extraction, and export to external tools. | Implemented |
 | MODEL-01 | Classify work using an optional model or external analysis worker. | Implemented |
 | BRANCH-01 | Explore an edited input through transcript replay or a native Codex branch. | Implemented, with distinct semantics |
-| EXT-01 | Keep optional features and future agent integrations modular. | Implemented extension boundary; only Codex ships |
+| EXT-01 | Keep tracing capabilities and future agent integrations independently configurable. | Implemented static first-party catalog and narrow services; only Codex ships |
 | EXAMPLE-01 | Maintain an `examples/` folder with a demo for each initial use case, using the local model or a labeled dummy fallback where a model is needed. | Implemented examples; native execution requires a real local session |
+
+### 1.1 Raw capture and performance acceptance
+
+**RAW-01 implemented; PERF-01 partially verified — 2026-09-08.** The [principles](principles.md) own the product intent. Acceptance requires:
+
+| Requirement | Acceptance evidence |
+| --- | --- |
+| RAW-01: complete capture | Verify reconstruction of complete source payloads captured before lossy decoding/normalization, including unknown records/fields and source/encoding metadata needed for reprocessing. |
+| RAW-01: feature independence | HTTP and CLI retain identical complete source evidence with optional analysis and inspection disabled. Keep source/receiver selection explicit, including disabled live receivers in the isolated dev profile. |
+| RAW-01: failures and future processing | Verify that interpretation failures preserve captured evidence, incomplete capture is reported explicitly, and retained payloads support later reparsing. Old uncaptured data still requires the original source; automatic backfill is not implemented. |
+| PERF-01: measured performance | Record ingestion throughput, query/tail latency, CPU, memory, and disk costs against repeatable workloads with complete raw capture; agree and verify numerical budgets. |
+| PERF-01: bounded operation | Verify explicit backpressure/failure under capacity pressure, with no successful acknowledgement of silently incomplete capture. Measure optional analysis overhead separately. |
+
+**Evidence and limits:** [capture tests](../backend/tests/test_capture.py) verify complete bytes, unknown fields, feature independence, interpretation failure, explicit retries and schema v9 upgrades. Original capture uses SQLite `FULL` commits; canonical/outcome writes use `NORMAL`. Admission failures do not claim capture; upstream data never supplied cannot be recovered. [Exact semantics](data-lineage.md#35-raw-archive-and-export).
+
+[Architecture review measurements](architecture-review.md) cover fixed synthetic import retries with concurrent session-list reads, CPU, memory and storage. They do not establish production throughput, large-dataset tail latency, export cost or model-analysis load. Numerical budgets remain unagreed. These are PERF-01 verification gaps; larger deployment scope remains in [WL-001](backlog.md#wl-001--efficient-high-volume-tracing-service).
 
 ## 2. Local operation and configuration
 
@@ -96,11 +114,11 @@ Acceptance: a measured item containing `['/bin/zsh', '-lc', 'echo "two words"']`
 
 **IMP-02 — Implemented**
 
-- Stream CLI input and commit once per file.
+- Snapshot CLI input in bounded chunks; commit original capture before a separate per-file normalization transaction.
 - Deduplicate stable event identities on repeated imports.
 - Complete previously unfinished events when their results become available.
 - Preserve session classification on ordinary reimport.
-- Reject a malformed file atomically; do not leave partially imported events from that file.
+- Reject malformed normalization atomically; retain the complete captured file and report its capture ID without leaving partial canonical events.
 - Continue processing subsequent files after handled file/parse failures and exit nonzero when any fail.
 - Allow retry after Codex finishes a partially written final line.
 - Do not treat reimport as arbitrary synchronization of edited or rewritten history.
@@ -153,10 +171,10 @@ Treat persisted Codex rollouts as a version-dependent format. Do not assume a st
 
 | Principle | Current behavior and remaining work |
 | --- | --- |
-| Preserve original data completely. | Successful Codex JSONL imports archive all supplied lines and fields independently of normalized events. Exact retention, export, failure, and backfill rules are in [lineage §3.5](data-lineage.md#35-raw-archive-and-export). |
+| Preserve original data completely. | Core captures complete bytes before interpretation, independent of inspection settings, including unknown records and failed normalization. Retention, export, failure, and backfill rules are in [lineage §3.5](data-lineage.md#35-raw-archive-and-export). |
 | Record the producing Codex version and our mapping version. | Source `session_meta.payload.cli_version` is retained when supplied; absence remains unknown. Archives record `mapping_version`. Verified Codex event and field links identify their archive/version; see [field lineage](data-lineage.md#36-per-field-codex-lineage) for backfill and source limits. Changing normalization semantics must advance the mapping version and document existing-data treatment. |
 | Normalize only through documented, evidence-backed mappings. | [Lineage §3.3](data-lineage.md#33-record-to-event-mapping) describes current mappings and their assumptions. Preserve unknown data without inventing meaning; existing heuristic correctness gaps remain listed in the [gap register](data-quality-gaps.md). |
-| Preserve unfamiliar fields and report unsupported records. | Preservation is implemented. Reports distinguishing mapped, intentionally ignored, unsupported, and rejected records are still required (DQ-03); absence from normalized events must not be interpreted as absent activity. |
+| Preserve unfamiliar fields and report unsupported records. | Core capture preserves unfamiliar bytes even if normalization fails. Reports distinguishing mapped, intentionally ignored, unsupported, and rejected records are still required (DQ-03); absence from normalized events must not be interpreted as absent activity. |
 | Separate structural validation from interpretation. | JSON/payload/timestamp checks are partial (DQ-14). Valid structure or `role: "user"` does not establish human authorship. Rollout input attribution uses explicit source metadata and context envelopes; it remains inferred (INPUT-01/DQ-01). |
 
 For a new supported variant, add a synthetic or redacted fixture, document source fields and transformations, and verify raw round-trip preservation and intended normalized behavior. Record the producing version when known, the mapping version, and effects on existing imports. These are change-review requirements, not claims of compatibility with every Codex release.
@@ -167,7 +185,7 @@ For a new supported variant, add a synthetic or redacted fixture, document sourc
 
 **TEL-01 — Implemented**
 
-Receive OTLP/HTTP at `/v1/logs` and `/v1/traces`, supporting JSON, binary protobuf, and gzip. Preserve decoded record/resource/scope data, identifiers, and hierarchy where provided. Normalize recognized operations into the shared event contract.
+Receive OTLP/HTTP at `/v1/logs` and `/v1/traces`, supporting JSON, binary protobuf, and gzip. Capture complete wire payloads before decoding, and preserve decoded record/resource/scope data, identifiers, and hierarchy where provided. Normalize recognized operations into the shared event contract.
 
 Merge the following into the user-level Codex configuration, normally `~/.codex/config.toml`, without duplicating existing tables:
 
@@ -340,11 +358,13 @@ Supported event kinds are `user`, `assistant`, `llm`, `tool`, `user_wait`, and `
 
 Accept known numeric timezone offsets and normalize them to UTC. Support instants on/after the Unix epoch with up to nine fractional digits; reject leap seconds, unknown `-00:00` offsets, and finer precision without silently rounding.
 
-Schema v1 timestamps migrate to text, schema v3 adds raw archive tables, schema v4 adds OTLP identity indexes, and schema v5 distinguishes session identities from unattributed telemetry, and schema v6 adds event source links, and schema v7 adds per-field Codex lineage on startup in one transaction under a write lock, preserving IDs, pagination cursors, metadata, and classifications. Stop all older AgentBoard processes before upgrading. Failures roll back the migration. Existing normalized API/export timestamp keys `start_ns`, `end_ns`, and `started_ns` are replaced, so external consumers and custom adapters must adopt the new names. Timestamp conversion needs no reimport; backfilling raw evidence requires reimporting original rollouts. Refresh the UI after restart. Older binaries cannot use schema v7. Existing OTLP session associations require the explicit repair described in [lineage §9](data-lineage.md#9-live-telemetry-mappings). The database row ID, original sequence, and temporal order have different meanings.
+Startup migrates supported databases to schema v9 in one transaction under a write lock, preserving IDs, pagination cursors, metadata, and classifications. Earlier migrations introduced RFC 3339 timestamps, raw archives, OTLP identities, event source links, and per-field lineage. Schema v9 adds independent raw-capture tables without fabricating old capture history. Schema v8 added mandatory source-line fingerprints for reimport conflict detection and hashes existing Codex archives without renormalizing events. Hashes contain no source text; see [migration and fingerprint semantics](data-lineage.md#8-identity-transactions-and-upgrades). Stop older processes before upgrading; failures roll back, and older binaries cannot use schema v9.
+
+Old normalized timestamp keys `start_ns`, `end_ns`, and `started_ns` are replaced by the current names. Timestamp conversion needs no reimport; backfilling raw evidence requires the original rollouts or an existing complete capture. Refresh the UI after restart. Existing OTLP associations require the explicit [repair procedure](data-lineage.md#9-live-telemetry-mappings). Database row ID, source sequence, and temporal order remain distinct.
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /api/v1/config` | Enabled features, adapters, model mode, import body limit, and purpose taxonomy. |
+| `GET /api/v1/config` | Enabled features and catalog, adapters, model mode, import body limit, and enabled-feature metadata. |
 | `GET /api/v1/sessions` | Search/filter observed sessions with limit/offset pagination. `identity_kind=unattributed` exposes telemetry groups; `all` includes both. |
 | `GET /api/v1/sessions/{sid}` | Session metadata and classification. |
 | `GET /api/v1/sessions/{sid}/events` | Filter by source, kind, and text; paginate with a cursor. |
@@ -355,7 +375,9 @@ Schema v1 timestamps migrate to text, schema v3 adds raw archive tables, schema 
 | `GET /api/v1/sessions/{sid}/inputs` | Query events currently classified as user inputs. |
 | `GET /api/v1/sessions/{sid}/stats` | Counts, bounds, and timing groups, optionally by source. |
 | `GET /api/v1/sessions/{sid}/export` | Stream normalized JSONL, optionally filtered by kind. |
-| `POST /api/v1/import/codex` | Import rollout contents. |
+| `POST /api/v1/import/codex` | Capture and normalize rollout contents; report capture ID and interpretation outcome. |
+| `GET /api/v1/captures`, `GET /api/v1/captures/{capture_id}` | Inspect retained payload metadata and interpretation attempts, including failures. |
+| `GET /api/v1/captures/{capture_id}/raw` | Export exact original transport bytes, including compressed/binary content. |
 | `POST /v1/logs`, `POST /v1/traces` | Receive telemetry. |
 | `GET /api/v1/classification-schema` | Generated strict JSON Schema for classification output; canonical category enum and reason constraints. |
 | `GET /api/v1/sessions/{sid}/classification-input` | Bounded classifier messages and input provenance; no model call. |
@@ -363,6 +385,8 @@ Schema v1 timestamps migrate to text, schema v3 adds raw archive tables, schema 
 | `PUT /api/v1/sessions/{sid}/classification` | Save external classification. |
 | `POST /api/v1/sessions/{sid}/replay` | Create a transcript replay from an edited input. |
 | `POST /api/v1/sessions/{sid}/codex-plan` | Create a native continuation plan without executing it. |
+
+Optional endpoints in this table are mounted only when their owning [feature](features.md#feature-list) is enabled; `/openapi.json` reflects that selection. Core session, event, and stats routes remain available.
 
 Event/input pages expose `items` and `next_cursor`; pass the cursor as `after`. Session pages use `next_offset`. Updating an older event does not automatically resend it through an already advanced cursor. Refresh to retrieve updated records.
 
@@ -410,13 +434,17 @@ Do not execute native continuation through HTTP. Do not rewind repository files.
 
 ## 11. Optional features and operational limits
 
-**EXT-01 — Implemented boundary**
+**EXT-01 — Implemented**
 
-Support the operator-controlled [configuration variables and defaults](../README.md#configuration-and-plugins), covering database, optional features, model mode/endpoint/ID/key, API token, allowed hosts, and trusted plugins. Settings also control request size, ingestion concurrency, and model context budget.
+Support the operator-controlled [configuration variables and defaults](../README.md#configuration), covering database, optional features, model mode/endpoint/ID/key, API token and allowed hosts. Settings also control request size, ingestion concurrency, and model context budget.
 
-Disabled optional features must hide their UI controls and reject their API use. Plugins may register routes or parsing adapters through the documented registration boundary. Only the Codex adapter is included; future agents are extension opportunities, not current integrations.
+The [feature list and contract](features.md) are authoritative for capability IDs, default tracing features, dependencies, persistence effects, and the required core. Disabling a feature removes its HTTP routes and OpenAPI entries, hides its UI controls, avoids its UI requests, and rejects dependent CLI operations. The dashboard remains available with an empty allowlist. Classification, replay, and native resume require explicit enablement.
 
-Keep storage behind the Store interface. Use SQLite WAL, indexed reads, per-file/batch transactions, and bounded HTTP ingestion. Default to four concurrent ingestion requests per process; return retryable `503` responses on capacity/storage contention. A successful ingestion response follows the transaction commit, subject to SQLite `synchronous=NORMAL` durability semantics.
+Use one static first-party catalog/runtime for CLI and HTTP. Validate unknown IDs, duplicate declarations, cycles, missing dependencies and adapter ownership before opening storage. `agentboard features` inspects metadata without a database or optional parser/client imports. Only enabled feature factories run, returning routers backed by named service operations. Core owns route mounting, middleware, storage and lifecycle. Dynamic plugin configuration/module execution is removed; only the Codex adapter ships.
+
+Disabling inspection never disables complete capture. Optional field mapping, analysis and model work are skipped while canonical input/timing/identity correctness remains active. Re-enabling exposes retained data but does not automatically backfill derived evidence; `agentboard reprocess CAPTURE_ID` supports explicit reprocessing under existing merge semantics. Feature flags are not redaction policy.
+
+Use SQLite WAL, indexed reads, atomic canonical normalization, bounded HTTP admission and chunked CLI capture. Four concurrent ingestion requests per process is the default; capacity/storage contention returns retryable 503. Commit complete original bytes with `synchronous=FULL` before interpretation. Canonical writes and outcome updates use `NORMAL`; interrupted attempts may remain pending and require explicit retry. No successful response may silently omit supplied raw data.
 
 Require a token before the CLI binds outside loopback. For remote operation configure the host allowlist and TLS termination. Authentication protects a shared dataset; it is not tenant isolation. Stored prompts/code/tool output are plaintext, and no automatic retention or secret-redaction policy is provided.
 
@@ -424,9 +452,9 @@ Keep tracing overhead away from agent execution by using explicit file imports o
 
 ### 11.1 Backend portability and future agent integrations
 
-Use Python now. Keep HTTP/OTLP, canonical event semantics, storage, and adapters separable so measured needs can justify migrating some/all components later. Any replacement must validate API compatibility and data migration while preserving one integration path for frontend/external clients. No rewrite, language, or alternate backend is selected.
+Prototype in Python while treating service performance as a current requirement (PERF-01). Keep HTTP/OTLP, complete raw capture, canonical event semantics, storage, and adapters separable so measured needs can justify migrating some/all components later. Any replacement must validate API compatibility, raw completeness, and data migration while preserving one integration path for frontend/external clients. No rewrite, replacement language, or alternate backend is selected.
 
-Future candidates are **OpenCode**, **Pi Agent**, and **Claude Code**. Only Codex ships; add future integrations through configured adapters/plugins without mandatory base dependencies. Track both options in the [backlog](backlog.md).
+Future candidates are **OpenCode**, **Pi Agent**, and **Claude Code**. Only Codex ships; add future integrations through first-party adapters without mandatory base dependencies. Track both options in the [backlog](backlog.md).
 
 ## 12. Verification and maintenance
 
@@ -441,6 +469,7 @@ Maintain the specification alongside feature changes. Validate behavior at the r
 | Inspector | Example 2,838 ms span: normalized endpoints, calculated duration/hash, inferred labels; model vs dummy output, retained source objects, unknown mappings, safe text rendering. |
 | View preference | Toggle both ways, reopen another event, reload, default behavior, unavailable storage. |
 | Model features | Validated categories, labeled dummy results, request failures, bounded transcripts, preserved source session. |
+| Feature boundaries | Empty and selective allowlists, dependencies, invalid/duplicate declarations, disabled routes/OpenAPI/CLI/UI requests, mandatory capture, optional derived writes, shared first-party adapters, catalog without database creation. |
 | Native continuation | Plan validation and fake app-server protocol tests; no paid model execution required for unit tests. |
 | Real Codex endpoint | Opt-in environment-configured Responses API provider; isolated AgentBoard receiver/database; successful response plus log, trace, and normalized LLM-event assertions. Skips before execution when unconfigured. |
 | App-server schema workflow | Stored manifest/file/reference integrity; version and file drift detection; no-op refreshes; removed-file cleanup; preservation on failed generation/replacement. [Tests](../backend/tests/test_schema_workflow.py) use a fake CLI. |
@@ -451,7 +480,7 @@ For development dependencies and existing checks:
 ```sh
 uv sync --extra dev
 uv run --extra dev pytest -q
-node --test frontend/tests/provenance.test.cjs
+node --test frontend/tests/*.test.cjs
 uv run --extra dev ruff check backend examples scripts
 ```
 
@@ -467,7 +496,7 @@ Implementation references: [CLI](../backend/agentboard/cli.py), [Codex adapter](
 
 Maintain the repository’s `examples/` folder and a documented demonstration of each initial use case. Network examples must consume the public backend API used by the frontend. Use synthetic data so ordinary examples do not require importing private sessions or running real repository commands.
 
-The [runnable example catalog](../examples/README.md) maps every required use case to a script or walkthrough: import; LLM/tool/parallel timing; OTLP; external trace analysis; model classification; edited transcript replay; input extraction; native Codex plan; independent classifier; UI inspection; plugins/tracing-only mode; and a storage benchmark. Keep that catalog current. Input extraction retains the section 7 limitation; the benchmark does not certify service capacity.
+The [runnable example catalog](../examples/README.md) maps every required use case to a script or walkthrough: import; LLM/tool/parallel timing; OTLP; external trace analysis; model classification; edited transcript replay; input extraction; native Codex plan; independent classifier; UI inspection; feature configuration and retained-capture reprocessing; and a storage benchmark. Keep that catalog current. Input extraction retains the section 7 limitation; the benchmark does not certify service capacity.
 
 Install the development extra for example/test dependencies. Model examples use section 10.1’s OpenAI client, endpoint/discovery, and `auto` fallback rules. Keep unavailable-service dummy results explicit and reachable-service errors visible. Non-model examples must work without a model service.
 
@@ -481,7 +510,7 @@ Acceptance: every row has a runnable script or an explicit UI/CLI walkthrough. A
 | Automatic rollout watcher/import hooks | Not implemented; imports are explicit. |
 | Dashboard live refresh | Not implemented; manually refresh after ingestion. |
 | Exact human think time, embedded approvals, async question waits | Not reliably established from the currently supported records. |
-| Full raw rollout retention and per-field source-line lineage | Raw Codex JSONL versions, hashes, and physical lines are implemented for new imports/reimports; verified event archive and actual event-record links are implemented; complete per-field lineage remains open. See [archive semantics](data-lineage.md#35-raw-archive-and-export). |
+| Mandatory complete raw capture and per-field source-line lineage | Complete Codex/OTLP capture is implemented independently of optional features. Codex field links exist when enabled; verified cross-source and analysis/model lineage remains open. See [archive semantics](data-lineage.md#35-raw-archive-and-export). |
 | OTLP metrics receiver or gRPC receiver | Outside current scope; use a collector for protocol translation when needed. |
 | Other coding-agent adapters | Outside the shipped integration set; extension boundary exists. |
 | Multi-tenant SaaS, distributed storage, durable job queue | Outside current scope. |
@@ -508,7 +537,7 @@ Traceability to initial requirements. **Documented** means represented with limi
 | Low backend resource consumption for local use | Sections 2 and 11. | Documented through the lightweight runtime and bounded ingestion/storage design. |
 | Efficient handling of a potentially large trace volume as a service | Sections 1, 11, and 13; [WL-001](backlog.md#wl-001--efficient-high-volume-tracing-service). | User clarified that this belongs in a separate backlog/wishlist for future review. Existing initial-release scope is unchanged. |
 | Python backend now; possible migration of some or all components later | Sections 2 and 11.1. | Python now; future migration conditional on measured needs. |
-| Plugins and user configuration for optional features | Section 11. | Documented. |
+| Plugins and user configuration for optional features | Section 11. | Refined to first-party configurable features; third-party loading deferred. |
 | Analyze time spent on LLM responses and tool calls | Section 6. | Documented, including measured/estimated distinctions and overlapping intervals. |
 | Classify writing, coding, bug-fixing, and similar sessions using another AI model or coding session | Section 10.1. | Documented, including external coding-session classification. |
 | Resume from the middle and change user input | Sections 10.2 and 10.3. | Documented through transcript replay and native continuation at supported turn boundaries; exact replay and file restoration are not claimed. |
@@ -523,3 +552,5 @@ Traceability to initial requirements. **Documented** means represented with limi
 On **2026-09-06**, the user moved high-volume service support to [WL-001](backlog.md#wl-001--efficient-high-volume-tracing-service) for later review. Initial scope remains local/modest private service, excluding multi-tenant SaaS, distributed storage, and durable queues. No throughput, retention-volume, concurrency, latency, or resource targets are agreed.
 
 Scalability remains a desired outcome; high volume alone does not require multi-tenancy, distributed infrastructure, or a language rewrite. The synthetic benchmark does not establish production capacity.
+
+On **2026-09-08**, the user clarified that complete raw collection must always support future inference/calculation and that high service performance is required while prototyping in Python. RAW-01 and PERF-01 (§1.1) record these requirements. High-volume deployment infrastructure remains deferred; efficient implementation and performance measurement apply now.

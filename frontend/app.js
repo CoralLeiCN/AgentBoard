@@ -1,6 +1,28 @@
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const state = {listKind:'session',offset:0, next:null, sid:null, session:null, stats:null, tab:'timeline', events:[], parallelGroups:[], parallelByEvent:new Map(), parallelNote:'', cursor:null, request:0, listRequest:0, features:[], purposes:[], unclassified:[], classifying:false, stopClassification:false};
+const state = {listKind:'session',offset:0, next:null, sid:null, session:null, stats:null, tab:'timeline', events:[], parallelGroups:[], parallelByEvent:new Map(), parallelNote:'', cursor:null, request:0, listRequest:0, features:[], adapters:[], purposes:[], unclassified:[], classifying:false, stopClassification:false};
+function hasFeature(...names) { return names.every(name=>state.features.includes(name)); }
+function canImport() { return hasFeature('import')&&state.adapters.includes('codex'); }
+function canBranch() { return hasFeature('inputs')&&(hasFeature('replay')||(hasFeature('native_resume')&&state.session?.agent==='codex')); }
+function applyFeatures(config) {
+  state.features=config.features;
+  state.adapters=config.adapters;
+  state.purposes=config.classification_taxonomy?.categories||[];
+  document.querySelectorAll('[data-feature]').forEach(node=>node.hidden=!hasFeature(...node.dataset.feature.split(' ')));
+  $('#import').hidden=$('#demo').hidden=!canImport();
+  $('#category').hidden=!hasFeature('classification');
+  if(!hasFeature('classification'))$('#category').value='';
+  if(!hasFeature('inputs')&&state.tab==='inputs')state.tab='timeline';
+  document.querySelectorAll('[data-tab]').forEach(button=>button.classList.toggle('active',button.dataset.tab===state.tab));
+  if(!hasFeature('raw_archive')&&eventView==='raw')setEventView('table');
+  const enabled=(config.feature_catalog||[]).filter(feature=>feature.enabled);
+  $('#feature-summary').textContent=`Optional features · ${enabled.length} enabled`;
+  $('#feature-list').innerHTML='<p>The trace explorer is always available. Complete raw data is preserved from configured sources, even when analysis or archive inspection is disabled.</p>'+(enabled.length?'<ul>'+enabled.map(feature=>`<li><strong>${esc(feature.name.replaceAll('_',' '))}</strong> · ${esc(feature.description)}</li>`).join('')+'</ul>':'<p>No optional features are enabled. Browse the sessions and events already in this database.</p>');
+  const signals=[['otlp_logs','logs'],['otlp_traces','traces']].filter(([feature])=>hasFeature(feature)).map(([,label])=>label);
+  $('#ingestion-hint').textContent=signals.length?`${hasFeature('import')?'Import sessions or send':'Send'} OpenTelemetry ${signals.join(' and ')} to this service.`:hasFeature('import')?'Import sessions to inspect a fixed dataset. Live telemetry is disabled.':'Browse the existing dataset. Import and live telemetry are disabled.';
+  $('#environment-note').hidden=config.environment!=='dev';
+  $('#environment-note').textContent=`DEV · ${config.database_name} · Live telemetry ${signals.length?signals.join(' and '):'disabled — fixed imports and snapshots'}`;
+}
 let noticeTimer, searchTimer;
 let usageRequest=0, usageReport=null;
 let eventView='table', eventRawRequest=0, eventLineageRequest=0;
@@ -10,7 +32,7 @@ async function api(path, options={}) {
   const token=sessionStorage.getItem('agentboard-token');
   const headers={...(token?{Authorization:`Bearer ${token}`} : {}),...options.headers};
   const response=await fetch(path,{...options,headers});
-  if (!response.ok) { let message; try { message=(await response.json()).detail; } catch { message=response.statusText; } throw Error(typeof message==='string'?message:JSON.stringify(message)); }
+  if (!response.ok) { let message; try { const error=await response.json();message=typeof error.detail==='string'?error.detail:JSON.stringify(error.detail);if(error.capture_status==='retained')message+=` Original data retained as capture ${error.capture_id}.`; } catch { message=response.statusText; } throw Error(message); }
   return response;
 }
 async function json(path, options) { return (await api(path,options)).json(); }
@@ -21,7 +43,8 @@ function date(value) { return new Date(value).toLocaleString(undefined,{month:'s
 function download(text, name, type='application/x-ndjson') { const url=URL.createObjectURL(new Blob([text],{type}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000); }
 async function loadSessions() {
   const request=++state.listRequest;
-  const params=new URLSearchParams({limit:20,offset:state.offset,q:$('#search').value,category:$('#category').value,identity_kind:state.listKind});
+  const params=new URLSearchParams({limit:20,offset:state.offset,q:$('#search').value,identity_kind:state.listKind});
+  if(hasFeature('classification'))params.set('category',$('#category').value);
   const data=await json(`/api/v1/sessions?${params}`);
   if(request!==state.listRequest)return;
   state.next=data.next_offset;
@@ -38,19 +61,19 @@ async function loadSessions() {
   $('#total-label').textContent=unattributed?'UNATTRIBUTED GROUPS IN THIS VIEW':'SESSIONS IN THIS VIEW';
   $('#identity-column').textContent=unattributed?'TELEMETRY GROUP':'SESSION'; $('#search').placeholder=unattributed?'Search telemetry…':'Search sessions…'; $('#search').setAttribute('aria-label',unattributed?'Search telemetry':'Search sessions');
   $('#identity-note').textContent=unattributed?'These records have no unambiguous conversation identity. Each trace or resource group remains inspectable; it is not counted as a Codex session.':'Sessions are grouped by recorded conversation identity. Counts include imported and observed sessions, including automatic reviewers; they are not a count of human conversations.';
-  $('#empty').hidden=data.items.length>0; if(!data.items.length&&unattributed)$('#empty').innerHTML='<h2>No unattributed telemetry matches</h2><p>Change the search or category filter.</p>'; else if(!data.items.length)$('#empty').innerHTML='<h2>No matching sessions</h2><p>Import a rollout, load the demo, or change the filter. Background traces appear under Unattributed telemetry.</p>';
-  $('#sessions').innerHTML=data.items.map(s=>`<tr tabindex="0" data-id="${esc(s.id)}"><td><span class="session-name">${esc(s.title==='Untitled session'&&s.identity_kind!=='session'?'Unattributed telemetry':s.title)}</span><span class="session-sub">${esc(s.id.slice(0,28))}${s.input_origin?.origin==='internal'?' · Internal agent/reviewer':''}</span></td><td><span class="pill">${esc(s.agent)}</span></td><td>${s.classification?`<span class="pill category">${esc(purposeLabel(s.classification.category))}</span> ${s.classification.dummy?'<span class="pill dummy">dummy</span>':''}`:'<span class="muted">Unclassified</span>'}</td><td>${date(String(s.started_at))}</td><td>↗</td></tr>`).join('');
+  $('#empty').hidden=data.items.length>0; if(!data.items.length&&unattributed)$('#empty').innerHTML='<h2>No unattributed telemetry matches</h2><p>Change the search or filter.</p>'; else if(!data.items.length)$('#empty').innerHTML=`<h2>No matching sessions</h2><p>${canImport()?'Import a rollout, load the demo, or change the filter.':'No sessions match this view. Change the search or filter.'} Background traces appear under Unattributed telemetry.</p>`;
+  $('#sessions').innerHTML=data.items.map(s=>`<tr tabindex="0" data-id="${esc(s.id)}"><td><span class="session-name">${esc(s.title==='Untitled session'&&s.identity_kind!=='session'?'Unattributed telemetry':s.title)}</span><span class="session-sub">${esc(s.id.slice(0,28))}${s.input_origin?.origin==='internal'?' · Internal agent/reviewer':''}</span></td><td><span class="pill">${esc(s.agent)}</span></td><td${hasFeature('classification')?'':' hidden'}>${s.classification?`<span class="pill category">${esc(purposeLabel(s.classification.category))}</span> ${s.classification.dummy?'<span class="pill dummy">dummy</span>':''}`:'<span class="muted">Unclassified</span>'}</td><td>${date(String(s.started_at))}</td><td>↗</td></tr>`).join('');
   $('#page-info').textContent=data.total?`${state.offset+1}–${state.offset+data.items.length} of ${data.total} ${unattributed?'telemetry groups':'sessions'}`:'No sessions found';
   $('#prev').disabled=state.offset===0;$('#next').disabled=state.next===null;
   document.querySelectorAll('[data-id]').forEach(row=>{const open=()=>location.hash=encodeURIComponent(row.dataset.id);row.onclick=open;row.onkeydown=e=>{if(e.key==='Enter')open();};});
 }
 function purposeLabel(category) { return state.purposes.find(p=>p.id===category)?.label||category; }
 function renderClassification(s) {
-  const c=s.classification;$('#classification').hidden=!c;
+  const c=hasFeature('classification')?s.classification:null;$('#classification').hidden=!c;
   if(c)$('#classification').innerHTML=`<span class="pill category">${esc(purposeLabel(c.category))}</span>${esc(c.reason)} <span class="muted">· ${esc(c.model)} · ${c.dummy?'Inferred (dummy)':c.provider==='external'?'External agent (unverified)':'Model-generated'}${c.truncated?' · Partial transcript':''}${c.classified_at?' · '+esc(date(c.classified_at)):''}</span>`;
 }
 async function classifyPage() {
-  if(state.classifying)return;
+  if(!hasFeature('classification')||state.classifying)return;
   const ids=[...state.unclassified];if(!ids.length)return;
   state.classifying=true;state.stopClassification=false;
   $('#classify-page').disabled=true;$('#stop-classification').hidden=false;
@@ -79,7 +102,7 @@ async function openSession(sid) {
   ++usageRequest;usageReport=null;$('#usage-model').value='';$('#usage-export').disabled=true;$('#usage-pagination').hidden=true;$('#usage-content').innerHTML='<p class="usage-empty">Loading token usage…</p>';
   const request=++state.request; state.sid=sid;state.events=[];state.cursor=null;state.parallelGroups=[];state.parallelByEvent=new Map();$('#parallel-summary').hidden=true;
   $('#list-view').hidden=true;$('#detail-view').hidden=false;$('#event-list').innerHTML='<div class="loading">Loading trace…</div>';
-  const [s,stats,archives]=await Promise.all([json(`/api/v1/sessions/${encodeURIComponent(sid)}`),json(`/api/v1/sessions/${encodeURIComponent(sid)}/stats`),json(`/api/v1/sessions/${encodeURIComponent(sid)}/raw-imports`)]);
+  const [s,stats,archives]=await Promise.all([json(`/api/v1/sessions/${encodeURIComponent(sid)}`),json(`/api/v1/sessions/${encodeURIComponent(sid)}/stats`),hasFeature('raw_archive','export')?json(`/api/v1/sessions/${encodeURIComponent(sid)}/raw-imports`):{items:[]}]);
   if(request!==state.request)return;
   $('#export-raw').hidden=!archives.items.length;
   const unidentified=s.identity_kind!=='session'; $('#elapsed-label').textContent=unidentified?'RECORDED TIME RANGE':'SESSION ELAPSED'; $('#elapsed-note').textContent=unidentified?'First start to last recorded end':'Includes gaps between turns'; $('#back').textContent=state.listKind==='unattributed'?'← Unattributed telemetry':'← All sessions'; state.session=s;$('#session-title').textContent=unidentified&&s.title==='Untitled session'?'Unattributed telemetry':s.title;$('#session-id').textContent=s.id;$('#session-agent').textContent=`${s.agent.toUpperCase()} ${unidentified?'· UNATTRIBUTED TELEMETRY':'SESSION'}${s.metadata.dummy?' · DUMMY MODEL':''}${s.metadata.agentboard_fixture?.partial_session?' · REDACTED SESSION SLICE':''}`;
@@ -91,14 +114,15 @@ async function openSession(sid) {
     $('#detail-identity-note').innerHTML='Internal agent/reviewer session, inferred from recorded source metadata. Inputs remain inspectable under All events.'+(parent?` Parent session: <a href="#${esc(encodeURIComponent(parent))}">${esc(parent)}</a>.`:' No parent session ID recorded.');
   }
   const sources=new Set(stats.sources||stats.timing.map(t=>t.source));if(!sources.size)sources.add(s.agent==='replay'?'replay':s.agent==='otel'?'otlp_trace':'codex_jsonl');
-  if(sources.has('codex_jsonl')||sources.has('codex_item'))sources.add('unified');
-  const source=$('#source');for(const option of source.options)option.disabled=!sources.has(option.value);
-  source.value=[...source.options].find(o=>!o.disabled).value;
+  const available=[...sources];
+  if(hasFeature('unified_timeline')&&(sources.has('codex_jsonl')||sources.has('codex_item')))available.unshift('unified');
+  const source=$('#source');source.innerHTML=available.map(value=>`<option value="${esc(value)}">${esc(sourceLabel(value))}</option>`).join('');source.value=available[0];
   $('#classify').hidden=unidentified||!state.features.includes('classification');
-  run(()=>loadUsage())();
+  if(hasFeature('token_usage'))run(()=>loadUsage())();
   await loadEvents();
 }
 async function loadUsage(more=false, refresh=false) {
+  if(!hasFeature('token_usage'))return;
   const request=++usageRequest,sid=state.sid;
   const params=new URLSearchParams({model_override:$('#usage-model').value});
   if(!refresh&&usageReport?.archive)params.set('import_id',usageReport.archive.id);
@@ -115,7 +139,7 @@ async function loadUsage(more=false, refresh=false) {
     $('#usage-model').value=selected;
     $('#usage-content').innerHTML=usageHTML(report);
     if($('#usage-record-details'))$('#usage-record-details').open=!!detailsOpen;
-    $('#usage-export').disabled=!report.archive;
+    $('#usage-export').disabled=!hasFeature('export')||!report.archive;
     $('#usage-pagination').hidden=report.next_cursor===null;
   } catch(error) {
     if(request!==usageRequest||sid!==state.sid)return;
@@ -124,21 +148,23 @@ async function loadUsage(more=false, refresh=false) {
   }
 }
 async function loadEvents(more=false) {
+  if(state.tab==='inputs'&&!hasFeature('inputs'))return;
   const request=++state.request,sid=state.sid;
   const source=$('#source').value;
   const params=new URLSearchParams({limit:200,after:more?(state.cursor||0):0,source,q:$('#event-search').value});
   if(state.tab==='inputs')params.set('kind','user');
   if(state.tab==='timeline')params.set('timeline','true');
   let page,stats,parallel;
-  if(source==='unified') {
+  if(source==='unified'&&hasFeature('unified_timeline')) {
     page=await json(`/api/v1/sessions/${encodeURIComponent(sid)}/unified?${params}`);
     stats=page.stats;parallel=page.parallel;
   } else {
-    [page,stats,parallel]=await Promise.all([json(`/api/v1/sessions/${encodeURIComponent(sid)}/events?${params}`),json(`/api/v1/sessions/${encodeURIComponent(sid)}/stats?source=${source}`),json(`/api/v1/sessions/${encodeURIComponent(sid)}/parallel-groups?source=${source}`)]);
+    [page,stats,parallel]=await Promise.all([json(`/api/v1/sessions/${encodeURIComponent(sid)}/events?${params}`),json(`/api/v1/sessions/${encodeURIComponent(sid)}/stats?source=${encodeURIComponent(source)}`),hasFeature('parallel_groups')?json(`/api/v1/sessions/${encodeURIComponent(sid)}/parallel-groups?source=${encodeURIComponent(source)}`):null]);
   }
   if(request!==state.request)return;
   state.stats=stats;
   state.events=more?[...state.events,...page.items]:page.items;state.cursor=page.next_cursor;
+  if(!hasFeature('parallel_groups')||!parallel)parallel={items:[],note:''};
   state.parallelGroups=parallel.items;state.parallelNote=parallel.note;state.parallelByEvent=new Map(parallel.items.flatMap(g=>g.event_ids.map(id=>[id,g])));
   $('#elapsed').textContent=duration(stats.elapsed_ms);$('#input-count').textContent=stats.counts.user||0;
   $('#input-quality').textContent=['unified','codex_jsonl'].includes(source)?'Human authorship inferred':'Authorship not verified';
@@ -154,7 +180,7 @@ async function loadEvents(more=false) {
   $('#more').hidden=state.cursor===null;renderEvents();
 }
 function setEventView(view,save=false) {
-  eventView=['json','raw'].includes(view)?view:'table';
+  eventView=view==='json'||(view==='raw'&&hasFeature('raw_archive'))?view:'table';
   $('#event-table-view').hidden=eventView!=='table';
   $('#event-json-view').hidden=eventView!=='json';
   $('#event-raw-view').hidden=eventView!=='raw';
@@ -163,6 +189,7 @@ function setEventView(view,save=false) {
   $('#event-dialog').scrollTop=0;
 }
 async function loadEventRaw(event) {
+  if(!hasFeature('raw_archive'))return;
   const request=++eventRawRequest;
   $('#event-raw-status').textContent='Loading source lines…';
   $('#event-raw-lines').replaceChildren();
@@ -191,6 +218,7 @@ async function loadEventRaw(event) {
   }
 }
 async function loadEventLineage(event) {
+  if(!hasFeature('field_lineage'))return;
   const request=++eventLineageRequest;
   if(!['codex_jsonl','codex_item'].includes(event.source))return;
   $('#event-source-note').textContent='Loading verified field lineage…';
@@ -200,7 +228,7 @@ async function loadEventLineage(event) {
     if(request!==eventLineageRequest)return;
     $('#event-fields').innerHTML=lineageTable(event,results,esc);
     bindLineageSources($('#event-fields'),results);
-    $('#event-source-note').textContent='Expand a source beneath a field to inspect its exact archived record and JSON path. Context and calculation boundaries appear here; Raw JSONL shows actual event records. Unknown means no verified mapping is available.';
+    $('#event-source-note').textContent='Expand a source beneath a field to inspect its exact archived record and JSON path. Context and calculation boundaries appear here.'+(hasFeature('raw_archive')?' Raw JSONL shows actual event records.':'')+' Unknown means no verified mapping is available.';
   } catch(error) {
     if(request===eventLineageRequest) {
       $('#event-fields').replaceChildren();
@@ -223,12 +251,12 @@ function inspectEvent(event) {
   $('#event-basis').textContent=event.attributes?.basis?`Method: ${event.attributes.basis}`:'';
   $('#event-basis').hidden=!event.attributes?.basis;
   $('#event-fields').innerHTML='<tr><td colspan="3">Loading field lineage…</td></tr>';
-  if(!['codex_jsonl','codex_item'].includes(event.source))$('#event-fields').innerHTML=description.fields.map(f=>`<tr><th scope="row"><code>${esc(f.field)}</code>${valueHTML(f.value)}</th><td><span class="origin ${f.origin}">${labels[f.origin]}</span></td><td>${esc(f.explanation)}</td></tr>`).join('');
+  if(!hasFeature('field_lineage')||!['codex_jsonl','codex_item'].includes(event.source))$('#event-fields').innerHTML=description.fields.map(f=>`<tr><th scope="row"><code>${esc(f.field)}</code>${valueHTML(f.value)}</th><td><span class="origin ${f.origin}">${labels[f.origin]}</span></td><td>${esc(f.explanation)}</td></tr>`).join('');
   $('#event-evidence').hidden=!description.evidence;
   $('#event-evidence').open=false;
   $('#event-evidence-title').textContent=description.evidence?.label||'Preserved source data';
   $('#event-evidence-json').textContent=description.evidence?JSON.stringify(description.evidence.data,null,2):'';
-  $('#event-source-note').textContent=description.evidence?'The preserved source data below is separate from AgentBoard’s normalized event.':'Field origins describe AgentBoard’s normalization. Open Raw JSONL for verified source lines when available.';
+  $('#event-source-note').textContent=description.evidence?'The preserved source data below is separate from AgentBoard’s normalized event.':'Field origins describe AgentBoard’s normalization.'+(hasFeature('raw_archive')?' Open Raw JSONL for verified source lines when available.':'');
   $('#event-json').textContent=JSON.stringify(event,null,2);
   loadEventRaw(event);
   loadEventLineage(event);
@@ -236,7 +264,7 @@ function inspectEvent(event) {
   $('#event-dialog').showModal();
   $('#event-dialog').scrollTop=0;
 }
-function sourceLabel(source) { return ({codex_jsonl:'Rollout',codex_item:'Item timing'})[source]||source; }
+function sourceLabel(source) { return ({unified:'Unified timeline',codex_jsonl:'Rollout',codex_item:'Item timing',otlp_trace:'OTel traces',otlp_log:'OTel logs',replay:'Model replay'})[source]||source; }
 function eventContext(event) {
   const match=event.unified;
   if(match?.match_status==='matched')return 'Rollout + item timing · exact identity match';
@@ -249,7 +277,8 @@ function parallelBadge(event) {
 }
 function renderParallelSummary(events) {
   const panel=$('#parallel-summary');
-  panel.hidden=state.tab==='inputs';
+  panel.hidden=!hasFeature('parallel_groups')||state.tab==='inputs';
+  if(panel.hidden)return;
   const shown=new Set(events.map(e=>e.id));
   const groups=state.parallelGroups;
   const visible=groups.map(g=>({group:g,count:g.event_ids.filter(id=>shown.has(id)).length})).filter(g=>g.count);
@@ -277,12 +306,12 @@ function renderEvents() {
     const range=Number(end-start);
     $('#event-list').innerHTML='<div class="timeline-head"><span>OPERATION</span><span>RELATIVE TIMELINE · LOADED EVENTS</span><span>DURATION</span></div>'+sorted.map(e=>{const a=Number(timestampNs(e.start_time)-start)/range*100;const ms=e.end_time?Number(timestampNs(e.end_time)-timestampNs(e.start_time))/1e6:null;const width=e.end_time?Math.max(.3,Number(timestampNs(e.end_time)-timestampNs(e.start_time))/range*100):.3;return `<div tabindex="0" class="timeline-row${e.unified?.match_status==='child'?' child-operation':''}" data-event="${esc(e.id)}"><div class="event-name"><i class="dot ${e.kind}"></i>${e.unified?.match_status==='child'?'↳ ':''}${esc(e.name)}${['user','assistant'].includes(e.kind)?`<span class="message-preview">${esc((e.text||'').slice(0,180))}</span>`:''}<small>${e.kind==='event'?'other span · ':''}${$('#source').value==='unified'?esc(eventContext(e))+' · ':''}${esc(e.timing)}${e.status!=='ok'?' · '+esc(e.status):''}</small>${parallelBadge(e)}</div><div class="track"><div class="bar ${e.kind}${e.end_time==null?' instant':''}" style="left:${Math.min(a,99.7)}%;width:${Math.min(width,100-a)}%"></div></div><span class="event-duration">${e.end_time==null&&!['llm','tool','user_wait'].includes(e.kind)?'event':duration(ms)}</span></div>`;}).join('');
   } else if(state.tab==='inputs') {
-    $('#event-list').innerHTML=events.map((e,i)=>`<article class="input-card"><div class="input-card-head"><span>INPUT ${i+1} · ${date(e.start_time)}${e.attributes?.input_attribution?.origin==='human'?' · Inferred human':''}</span><div class="actions"><button class="button small" data-event="${esc(e.id)}">Inspect</button>${state.features.includes('replay')?`<button class="button small" data-branch="${esc(e.id)}">Branch & edit ↗</button>`:''}</div></div><pre>${esc(e.text||'[Prompt content not recorded]')}</pre></article>`).join('');
+    $('#event-list').innerHTML=events.map((e,i)=>`<article class="input-card"><div class="input-card-head"><span>INPUT ${i+1} · ${date(e.start_time)}${e.attributes?.input_attribution?.origin==='human'?' · Inferred human':''}</span><div class="actions"><button class="button small" data-event="${esc(e.id)}">Inspect</button>${canBranch()?`<button class="button small" data-branch="${esc(e.id)}">Branch & edit ↗</button>`:''}</div></div><pre>${esc(e.text||'[Prompt content not recorded]')}</pre></article>`).join('');
   } else {
     $('#event-list').innerHTML=events.map(e=>`<div tabindex="0" class="event-row" data-event="${esc(e.id)}"><span class="pill">${esc(e.kind)}</span><span>${esc(e.name)} ${parallelBadge(e)}${$('#source').value==='unified'?`<small>${esc(eventContext(e))}</small>`:''}</span><span>${date(e.start_time)}</span></div>`).join('');
   }
   document.querySelectorAll('[data-event]').forEach(el=>{const open=()=>inspectEvent(state.events.find(e=>e.id===el.dataset.event));el.onclick=open;el.onkeydown=e=>{if(e.key==='Enter')open();};});
-  document.querySelectorAll('[data-branch]').forEach(el=>el.onclick=()=>{state.input=el.dataset.branch;$('#replacement').value=state.events.find(e=>e.id===state.input).text;$('#native-plan').hidden=state.session.agent!=='codex';$('#branch-dialog').showModal();});
+  document.querySelectorAll('[data-branch]').forEach(el=>el.onclick=()=>{state.input=el.dataset.branch;$('#replacement').value=state.events.find(e=>e.id===state.input).text;$('#native-plan').hidden=!hasFeature('native_resume')||state.session.agent!=='codex';$('#replay').hidden=!hasFeature('replay');$('#branch-note').textContent=[hasFeature('replay')?'Model replay continues the transcript with the configured model.':'',hasFeature('native_resume')&&state.session.agent==='codex'?'Native Codex branching produces a plan to run locally.':''].filter(Boolean).join(' ')+' Earlier files are not restored.';$('#branch-dialog').showModal();});
 }
 async function route() { const sid=decodeURIComponent(location.hash.slice(1));if(sid){await openSession(sid);}else{state.request++;state.sid=null;$('#list-view').hidden=false;$('#detail-view').hidden=true;$('#breadcrumbs').textContent='Workspace / Sessions';await loadSessions();} }
 $('#back').onclick=()=>{location.hash='';};
@@ -292,30 +321,45 @@ $('#refresh').onclick=run(loadSessions);$('#prev').onclick=run(async()=>{state.o
 $('#search').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(run(async()=>{state.offset=0;await loadSessions();}),250);};
 document.querySelectorAll('[data-list-kind]').forEach(button=>button.onclick=run(async()=>{state.listKind=button.dataset.listKind;state.offset=0;document.querySelectorAll('[data-list-kind]').forEach(b=>b.classList.toggle('active',b===button));await loadSessions();}));
 $('#category').onchange=run(async()=>{state.offset=0;await loadSessions();});
-$('#import').onclick=()=>$('#file').click();
-$('#file').onchange=run(async()=>{const files=[...$('#file').files];let last;for(const file of files){const result=await json('/api/v1/import/codex',{method:'POST',headers:{'Content-Type':'application/x-ndjson'},body:file});last=result.session_ids[0];notice(`Imported ${file.name}: ${result.inserted_events} new events`);}$('#file').value='';await loadSessions();if(last)location.hash=encodeURIComponent(last);});
-$('#demo').onclick=run(()=>busy($('#demo'),async()=>{const response=await fetch('/static/demo.jsonl');if(!response.ok)throw Error('Demo fixture unavailable');const result=await json('/api/v1/import/codex',{method:'POST',headers:{'Content-Type':'application/x-ndjson'},body:await response.text()});notice('Demo imported. Explore the timeline or branch from a user input.');location.hash=encodeURIComponent(result.session_ids[0]);}));
-document.querySelectorAll('[data-tab]').forEach(button=>button.onclick=run(async()=>{state.tab=button.dataset.tab;document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b===button));await loadEvents();}));
+$('#import').onclick=()=>{if(canImport())$('#file').click();};
+$('#file').onchange=run(async()=>{if(!canImport())return;const files=[...$('#file').files];let last;for(const file of files){const result=await json('/api/v1/import/codex',{method:'POST',headers:{'Content-Type':'application/x-ndjson'},body:file});last=result.session_ids[0];notice(`Imported ${file.name}: ${result.inserted_events} new events`);}$('#file').value='';await loadSessions();if(last)location.hash=encodeURIComponent(last);});
+$('#demo').onclick=run(()=>busy($('#demo'),async()=>{if(!canImport())return;const response=await fetch('/static/demo.jsonl');if(!response.ok)throw Error('Demo fixture unavailable');const result=await json('/api/v1/import/codex',{method:'POST',headers:{'Content-Type':'application/x-ndjson'},body:await response.text()});notice('Demo imported. Explore the recorded session.');location.hash=encodeURIComponent(result.session_ids[0]);}));
+document.querySelectorAll('[data-tab]').forEach(button=>button.onclick=run(async()=>{if(button.dataset.tab==='inputs'&&!hasFeature('inputs'))return;state.tab=button.dataset.tab;document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b===button));await loadEvents();}));
 $('#source').onchange=run(()=>loadEvents());$('#more').onclick=run(()=>loadEvents(true));$('#event-search').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(run(()=>loadEvents()),250);};
 $('#classify-page').onclick=run(classifyPage);
 $('#stop-classification').onclick=()=>{state.stopClassification=true;};
-$('#classify').onclick=run(()=>busy($('#classify'),async()=>{const sid=state.sid;const result=await json(`/api/v1/sessions/${encodeURIComponent(sid)}/classify`,{method:'POST'});if(state.sid===sid){state.session.classification=result;renderClassification(state.session);}notice(result.dummy?`Classified with dummy model: ${result.fallback_reason}`:'Session purpose classified');}));
-$('#export').onclick=run(()=>busy($('#export'),async()=>{const response=await api(`/api/v1/sessions/${encodeURIComponent(state.sid)}/export${state.tab==='inputs'?'?kind=user':''}`);download(await response.text(),'agentboard-events.jsonl');}));
-async function branch(mode){const replacement=$('#replacement').value;if(!replacement.trim())throw Error('Enter a replacement input');const result=await json(`/api/v1/sessions/${encodeURIComponent(state.sid)}/${mode}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({input_id:state.input,replacement})});$('#branch-dialog').close();if(mode==='codex-plan'){download(JSON.stringify(result,null,2),'codex-branch-plan.json','application/json');notice('Plan downloaded. Use agentboard resume to execute locally.');}else{notice(result.dummy?'Replay completed with dummy model':'Replay completed');location.hash=encodeURIComponent(result.session_id);}}
+$('#classify').onclick=run(()=>busy($('#classify'),async()=>{if(!hasFeature('classification'))return;const sid=state.sid;const result=await json(`/api/v1/sessions/${encodeURIComponent(sid)}/classify`,{method:'POST'});if(state.sid===sid){state.session.classification=result;renderClassification(state.session);}notice(result.dummy?`Classified with dummy model: ${result.fallback_reason}`:'Session purpose classified');}));
+$('#export').onclick=run(()=>busy($('#export'),async()=>{if(!hasFeature('export'))return;const response=await api(`/api/v1/sessions/${encodeURIComponent(state.sid)}/export${state.tab==='inputs'?'?kind=user':''}`);download(await response.text(),'agentboard-events.jsonl');}));
+async function branch(mode){if(!hasFeature('inputs',mode==='codex-plan'?'native_resume':'replay'))return;const replacement=$('#replacement').value;if(!replacement.trim())throw Error('Enter a replacement input');const result=await json(`/api/v1/sessions/${encodeURIComponent(state.sid)}/${mode}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({input_id:state.input,replacement})});$('#branch-dialog').close();if(mode==='codex-plan'){download(JSON.stringify(result,null,2),'codex-branch-plan.json','application/json');notice('Plan downloaded. Use agentboard resume to execute locally.');}else{notice(result.dummy?'Replay completed with dummy model':'Replay completed');location.hash=encodeURIComponent(result.session_id);}}
 $('#replay').onclick=run(()=>busy($('#replay'),()=>branch('replay')));$('#native-plan').onclick=run(()=>busy($('#native-plan'),()=>branch('codex-plan')));
 document.querySelectorAll('.close').forEach(b=>b.onclick=()=>b.closest('dialog').close());
 $('#token').onclick=()=>{$('#api-token').value=sessionStorage.getItem('agentboard-token')||'';$('#token-dialog').showModal();};
 $('#save-token').onclick=run(async()=>{sessionStorage.setItem('agentboard-token',$('#api-token').value);$('#token-dialog').close();await init();});
 window.onhashchange=run(route);
-async function init(){try{const config=await json('/api/v1/config');state.features=config.features;state.purposes=config.classification_taxonomy.categories;const selectedCategory=$('#category').value;$('#category').innerHTML='<option value="">All purposes</option><option value="unclassified">Unclassified</option>'+state.purposes.map(p=>`<option value="${esc(p.id)}">${esc(p.label)}</option>`).join('');$('#category').value=selectedCategory;$('#purpose-note').textContent=config.model_mode==='dummy'?'Dummy mode uses test keyword rules. Classify only the unclassified sessions on this page.':'Run the configured model for unclassified sessions on this page.'+(config.model_mode==='auto'?' Offline requests fall back to labeled dummy results.':'');$('#endpoint-hint').textContent=location.host;if(!config.otlp_enabled)$('#ingestion-hint').textContent='Use explicit imports or a database snapshot to inspect a fixed dataset. Live telemetry is disabled here.';$('#environment-note').hidden=config.environment!=='dev';$('#environment-note').textContent=`DEV · ${config.database_name} · Live telemetry ${config.otlp_enabled?'enabled':'disabled — fixed imports and snapshots'}`;$('#connection').textContent=config.environment==='dev'?'● Connected · DEV':'● Connected';await route();}catch(e){$('#connection').textContent='○ Connection required';throw e;}}
+async function init() {
+  try {
+    const config=await json('/api/v1/config');
+    applyFeatures(config);
+    const selectedCategory=$('#category').value;
+    $('#category').innerHTML='<option value="">All purposes</option><option value="unclassified">Unclassified</option>'+state.purposes.map(p=>`<option value="${esc(p.id)}">${esc(p.label)}</option>`).join('');
+    $('#category').value=selectedCategory;
+    $('#purpose-note').textContent=config.model_mode==='dummy'?'Dummy mode uses test keyword rules. Classify only the unclassified sessions on this page.':'Run the configured model for unclassified sessions on this page.'+(config.model_mode==='auto'?' Offline requests fall back to labeled dummy results.':'');
+    $('#endpoint-hint').textContent=location.host;
+    $('#connection').textContent=config.environment==='dev'?'● Connected · DEV':'● Connected';
+    await route();
+  } catch(error) {
+    $('#connection').textContent='○ Connection required';
+    throw error;
+  }
+}
 run(init)();
 
-$('#export-raw').onclick=run(()=>busy($('#export-raw'),async()=>{const response=await api(`/api/v1/sessions/${encodeURIComponent(state.sid)}/raw`);download(await response.arrayBuffer(),'rollout.jsonl');}));
+$('#export-raw').onclick=run(()=>busy($('#export-raw'),async()=>{if(!hasFeature('raw_archive','export'))return;const response=await api(`/api/v1/sessions/${encodeURIComponent(state.sid)}/raw`);download(await response.arrayBuffer(),'rollout.jsonl');}));
 $('#usage-model').onchange=run(()=>loadUsage());
 $('#usage-refresh').onclick=run(()=>busy($('#usage-refresh'),()=>loadUsage(false,true)));
 $('#usage-more').onclick=run(()=>busy($('#usage-more'),()=>loadUsage(true)));
 $('#usage-export').onclick=run(()=>busy($('#usage-export'),async()=>{
-  if(!usageReport?.archive)return;
+  if(!hasFeature('token_usage','export')||!usageReport?.archive)return;
   const params=new URLSearchParams({model_override:usageReport.model_override||'',import_id:usageReport.archive.id});
   const response=await api(`/api/v1/sessions/${encodeURIComponent(state.sid)}/usage/export?${params}`);
   download(await response.text(),'agentboard-usage.json','application/json');

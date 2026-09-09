@@ -25,8 +25,8 @@ CASES = (
 def test_live_responses_classification(tmp_path, private_endpoint, case, prompt, expected):
     endpoint = private_endpoint("AGENTBOARD_E2E_CLASSIFICATION")
     app = create_app(Settings(
-        database=str(tmp_path / "classification.db"), features={"classification"}, plugins=(),
-        otlp_enabled=False, model_mode="local", model_api="responses", model_base_url=endpoint.base_url,
+        database=str(tmp_path / "classification.db"), features={"import", "classification"},
+        model_mode="local", model_api="responses", model_base_url=endpoint.base_url,
         model=endpoint.model, model_key=endpoint.api_key or "local", api_token="",
         model_timeout_seconds=int(os.getenv("AGENTBOARD_E2E_CLASSIFICATION_TIMEOUT_SECONDS", "120")),
     ))

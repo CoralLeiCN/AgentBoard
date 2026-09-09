@@ -139,9 +139,8 @@ def live_receiver(tmp_path, codex_endpoint):
         Settings(
             database=str(database),
             environment="test",
-            features=set(),
+            features={"otlp_logs", "otlp_traces"},
             model_mode="dummy",
-            otlp_enabled=True,
         )
     )
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

@@ -6,7 +6,7 @@ const source=readFileSync(require('node:path').join(__dirname,'../app.js'),'utf8
 function setup(json) {
   const element=()=>({textContent:'',children:[],replaceChildren(){this.children=[];},append(...children){this.children.push(...children);}});
   const nodes={'#event-raw-status':element(),'#event-raw-lines':element()};
-  const context=vm.createContext({json,document:{createElement:element},$:id=>nodes[id]});
+  const context=vm.createContext({json,hasFeature:()=>true,document:{createElement:element},$:id=>nodes[id]});
   vm.runInContext('let eventRawRequest=0;'+source.slice(source.indexOf('async function loadEventRaw('),source.indexOf('function inspectEvent(')),context);
   return {nodes,load:context.loadEventRaw};
 }

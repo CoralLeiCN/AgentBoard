@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from agentboard.api import create_app
 from agentboard.config import Settings
+from agentboard.features import BUILTIN_FEATURES
 from scripts.private_endpoint import endpoint_config
 
 FIXTURE = Path(__file__).parents[2] / "examples/fixtures/codex-session.jsonl"
@@ -36,7 +37,8 @@ def private_endpoint(request, monkeypatch):
 
 @pytest.fixture
 def client(tmp_path):
-    app = create_app(Settings(database=str(tmp_path / "test.db"), model_mode="dummy"))
+    app = create_app(Settings(database=str(tmp_path / "test.db"), model_mode="dummy",
+                              features={feature.name for feature in BUILTIN_FEATURES}))
     with TestClient(app) as client:
         yield client
 

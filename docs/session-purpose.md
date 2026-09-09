@@ -1,6 +1,6 @@
 # Session purpose classification
 
-Implemented 2026-09-07. Run an optional LLM to assign one primary purpose per session, or let an external agent submit a result. Importing and collecting telemetry do not invoke models.
+Implemented 2026-09-07. Run an optional LLM to assign one primary purpose per session, or let an external agent submit a result. Importing and collecting telemetry do not invoke models. The `classification` feature is off by default; add it to the chosen [feature allowlist](features.md#configuration) for HTTP/UI use or CLI commands.
 
 ## Categories
 
@@ -52,6 +52,8 @@ Install the model extra, configure an OpenAI-compatible endpoint, then classify 
 
 ```sh
 uv sync --extra models
+# Classification on an existing dataset; add other feature IDs when needed.
+export AGENTBOARD_FEATURES=classification
 export AGENTBOARD_MODEL_MODE=local
 export AGENTBOARD_MODEL_BASE_URL=http://localhost:30000/v1
 export AGENTBOARD_MODEL=my-model

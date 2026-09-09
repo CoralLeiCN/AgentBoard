@@ -16,7 +16,6 @@ _SETTINGS_ENV = "_AGENTBOARD_RELOAD_SETTINGS"
 def create_reload_app():
     values = json.loads(os.environ[_SETTINGS_ENV])
     values["features"] = set(values["features"])
-    values["plugins"] = tuple(values["plugins"])
     return create_app(Settings(**values))
 
 
