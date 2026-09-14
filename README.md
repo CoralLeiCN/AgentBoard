@@ -209,24 +209,7 @@ The CLI binds to loopback. Binding elsewhere requires `AGENTBOARD_API_TOKEN`; co
 
 [examples/README.md](examples/README.md) maps each requirement to a runnable demo. Start the service with the capabilities listed in that catalog, then run `uv run python examples/01_import.py` through `09_external_classification.py`. Model examples require explicit feature enablement and fall back to a dummy model when your local service is unavailable.
 
-The repository keeps generated Codex app-server schemas with a producing-version/hash manifest. After upgrading Codex or changing the integration, run `python scripts/codex_schemas.py check`; use `update` to regenerate a reviewable baseline. Offline `verify` runs in pytest. See the [schema upgrade workflow](schemas/README.md) for executable selection, drift review, and the distinction from raw rollout files.
-
-```sh
-uv run --extra dev pytest -q
-node --test frontend/tests/provenance.test.cjs
-uv run --extra dev ruff check backend examples scripts
-uv run python examples/benchmark.py --events 10000
-```
-
-Tests cover imports, parallel timing, missing/invalid events, reimports, OTLP encodings and hierarchy, pagination, exports, classification/model failures, context branching, configuration, and plugin loading. The native Codex branch protocol is tested with a fake app-server; a real paid Codex generation is not required to run the test suite.
-
-Live Codex and classification tests use only the private model endpoint **`http://192.168.1.220:30000/v1`**, with no hosted-provider fallback. They are opt-in; normal tests need no model calls. The Codex test uses an isolated home, receiver and database. See [private model tests](docs/development.md#private-model-tests) for model discovery, optional credentials, and isolation details.
-
-```sh
-uv run --extra dev pytest --run-private-e2e -m e2e -q
-```
-
-The service must implement streaming Responses for Codex and structured Responses for classification. An unavailable endpoint fails the live test. [`example.env`](example.env) documents optional model pins; otherwise a single advertised model is discovered automatically.
+Follow [the developer testing guide](docs/testing.md) for focused regressions, the full offline backend/frontend checks, lint, browser verification, private model tests, schema checks and performance probes. It is the primary workflow for validating features and fixes; [AGENTS.md](AGENTS.md#testing) gives agents the short instruction.
 
 For real local development data, [seed a shared baseline and checkpoint](docs/development.md#automatic-worktree-data-setup) from complete selected Codex rollouts. Each worktree snapshots its own writable database. All source lines remain archived in the local database; real data and backups stay ignored and must never be committed or uploaded. [AGENTS.md](AGENTS.md) gives agents the required setup and test policy.
 

@@ -17,6 +17,8 @@ For all project documentation:
 | Document | Purpose |
 | --- | --- |
 | [README](../README.md) | Quick start and navigation |
+| [Developer testing guide](testing.md) | Primary workflow for choosing, running and reporting tests; other docs link here for test commands |
+| [Development guide](development.md) | Isolated environment, worktree datasets, checkpoint and recovery setup |
 | [Principles](principles.md) | Enduring product intent and design principles that guide tradeoffs |
 | [Specification](specification.md) | Requirements, status, and acceptance criteria |
 | [Feature list](features.md) | Mandatory core, optional capability IDs, configuration, and first-party module contract |

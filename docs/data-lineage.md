@@ -597,13 +597,7 @@ Existing tests establish these covered boundaries, not universal correctness:
 | Normalized endpoints versus inferred interpretation; calculated durations; model/dummy/retained origins | [`tests/provenance.test.cjs`](../frontend/tests/provenance.test.cjs) |
 | Native RPC completion arriving before turn-start response | [`tests/test_resume_rpc.py`](../backend/tests/test_resume_rpc.py) |
 
-Run from the repository root:
-
-```sh
-uv run --extra dev pytest -q
-node --test frontend/tests/*.test.cjs
-uv run --extra dev ruff check backend examples
-```
+Run [the routine checks in the developer testing guide](testing.md#routine-checks-before-handoff) from the repository root.
 
 Earlier temporary-data audits reproduced injected context counted as user input, prompt → completion yielding no LLM span, duplicate call IDs losing the earlier call, and rewritten input text ignored on reimport. Attribution now has the v5 regression coverage above; the broader timing/identity concerns and remaining attribution limits stay in the [gap register](data-quality-gaps.md). Audit observations alone are not regression guarantees or accepted behavior.
 

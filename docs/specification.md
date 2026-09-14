@@ -475,18 +475,11 @@ Maintain the specification alongside feature changes. Validate behavior at the r
 | App-server schema workflow | Stored manifest/file/reference integrity; version and file drift detection; no-op refreshes; removed-file cleanup; preservation on failed generation/replacement. [Tests](../backend/tests/test_schema_workflow.py) use a fake CLI. |
 | INPUT-01 | Context/internal exclusion, quoted markup, mirror ordering, parent metadata, wait boundaries, and explicit reimport corrections. |
 
-For development dependencies and existing checks:
-
-```sh
-uv sync --extra dev
-uv run --extra dev pytest -q
-node --test frontend/tests/*.test.cjs
-uv run --extra dev ruff check backend examples scripts
-```
+For setup and commands, follow [the developer testing guide](testing.md).
 
 Use browser checks for visuals/persistence and Node for JS tests/syntax; Node is not an app runtime dependency. Acceptance criteria are not claims of complete automated coverage.
 
-**E2E-01 — Implemented, opt-in (2026-09-07):** All live model tests use only `http://192.168.1.220:30000/v1`; other endpoints are rejected. `pytest --run-private-e2e -m e2e` enables the Codex telemetry and synthetic classification tests. Model IDs can be pinned or discovered from a single advertised model; unavailable/incompatible services fail with no hosted-provider fallback. The Codex harness uses a temporary home, disables OpenAI authentication and retries, and runs one short synthetic prompt with a temporary receiver/database. Normal tests need no model requests. See [private test configuration](development.md#private-model-tests) and [offline policy coverage](../backend/tests/test_private_endpoint.py).
+**E2E-01 — Implemented, opt-in (2026-09-07):** All live model tests use only `http://192.168.1.220:30000/v1`; other endpoints are rejected. `pytest --run-private-e2e -m e2e` enables the Codex telemetry and synthetic classification tests. Model IDs can be pinned or discovered from a single advertised model; unavailable/incompatible services fail with no hosted-provider fallback. The Codex harness uses a temporary home, disables OpenAI authentication and retries, and runs one short synthetic prompt with a temporary receiver/database. Normal tests need no model requests. See [private test configuration](testing.md#private-model-tests) and [offline policy coverage](../backend/tests/test_private_endpoint.py).
 
 Implementation references: [CLI](../backend/agentboard/cli.py), [Codex adapter](../backend/agentboard/adapters/codex.py), [telemetry](../backend/agentboard/otlp.py), [storage](../backend/agentboard/store.py), [API](../backend/agentboard/api.py), [field-origin descriptions](../frontend/provenance.js), [UI](../frontend/app.js), [models](../backend/agentboard/models.py), and [native resume](../backend/agentboard/resume.py). See also [architecture](architecture.md) and [runnable examples](../examples/README.md).
 
