@@ -2,6 +2,8 @@
 
 Implemented 2026-09-06. Use the dev endpoint and a separate dataset for UI testing, debugging and data audits.
 
+For what to test during development and before handoff, follow [the developer testing guide](testing.md). This document owns environment, database setup and recovery.
+
 | Mode | Endpoint | Database | Live OTel ingestion |
 | --- | --- | --- | --- |
 | Existing local collector | `http://127.0.0.1:4318` | `agentboard.db` by default | Enabled |
@@ -115,14 +117,4 @@ Verification: [dev configuration tests](../backend/tests/test_dev_config.py) cov
 
 ## Private model tests
 
-Implemented 2026-09-07. Every live Codex/model test uses **`http://192.168.1.220:30000/v1`**. The normal suite uses fixtures, mocks, a dummy model, and a fake Codex app-server. Run live checks explicitly:
-
-```sh
-uv run --extra dev pytest --run-private-e2e -m e2e -q
-```
-
-This runs the [Codex telemetry test](../backend/tests/test_codex_endpoint_e2e.py) and [synthetic classification tests](../backend/tests/test_classification_endpoint_e2e.py). The [shared policy](../scripts/private_endpoint.py) rejects any different base URL before a model request or Codex process. Discovery requests only the private `/models`, disables proxies/redirects, and auto-selects only if exactly one model is advertised. Pin a model with `AGENTBOARD_E2E_CODEX_MODEL` or `AGENTBOARD_E2E_CLASSIFICATION_MODEL` when needed. The matching `*_API_KEY` is optional; credentials remain in the child environment, never process arguments. [`example.env`](../example.env) lists these settings. Exporting endpoint/model/key settings also opts that suite into live testing; leave them unset for the normal offline suite.
-
-The endpoint must support streaming Responses for Codex and the Responses structured output used by classification. The Codex test requests one short synthetic response, disables retries, and checks the final message plus ingested `otlp_log`, `otlp_trace`, and normalized `llm` events. Its temporary Codex home ignores user configuration, OAuth state and execution-policy rules; tools inherit no environment and execution is read-only without approvals. It uses a temporary receiver/database, not ports 4318/4319 or the shared real sessions. The tests clear inherited proxy and hosted OpenAI environment settings. The child inherits only runtime essentials and the optional private-provider key, excluding desktop app pipes/session IDs. It pins `RUST_LOG=info` for consistent log filtering; the parent configuration is unchanged. Child stdout/stderr diagnostics stay in the temporary test directory.
-
-If the private service is unreachable, incompatible, or ambiguous, report the failure and fix that configuration. Never substitute a hosted/paid provider or an existing logged-in Codex session. In particular, `agentboard resume --execute` uses normal user Codex configuration and is not a suitable live test command; extend the isolated private harness for future native-resume coverage. The dev dashboard remains in dummy mode. [Policy tests](../backend/tests/test_private_endpoint.py) verify provider rejection and model-discovery behavior offline; they do not establish live service availability.
+The commands, endpoint policy and isolated harness are documented in [the testing guide's private model workflow](testing.md#private-model-tests). This section remains as a destination for existing links.

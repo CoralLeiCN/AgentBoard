@@ -89,7 +89,7 @@ Implemented 2026-09-07. [The opt-in test](../backend/tests/test_classification_e
 uv run --extra dev pytest --run-private-e2e -q -s backend/tests/test_classification_endpoint_e2e.py
 ```
 
-Live tests accept only `http://192.168.1.220:30000/v1`. The shared harness discovers a single advertised model, or uses `AGENTBOARD_E2E_CLASSIFICATION_MODEL`; multiple advertised models require a pin. Set `AGENTBOARD_E2E_CLASSIFICATION_API_KEY` if the private endpoint needs a credential. See [private model tests](development.md#private-model-tests). The live test allows 120 seconds per request, configurable through `AGENTBOARD_E2E_CLASSIFICATION_TIMEOUT_SECONDS`; normal gateway calls retain the 30-second default. This test checks protocol compatibility and four simple purposes, not general classification accuracy. Its settings do not switch the dev dashboard out of dummy mode.
+Live tests accept only `http://192.168.1.220:30000/v1`. The shared harness discovers a single advertised model, or uses `AGENTBOARD_E2E_CLASSIFICATION_MODEL`; multiple advertised models require a pin. Set `AGENTBOARD_E2E_CLASSIFICATION_API_KEY` if the private endpoint needs a credential. See [private model tests](testing.md#private-model-tests). The live test allows 120 seconds per request, configurable through `AGENTBOARD_E2E_CLASSIFICATION_TIMEOUT_SECONDS`; normal gateway calls retain the 30-second default. This test checks protocol compatibility and four simple purposes, not general classification accuracy. Its settings do not switch the dev dashboard out of dummy mode.
 
 ## Run an external agent
 
