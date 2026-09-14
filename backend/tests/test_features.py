@@ -65,11 +65,14 @@ def test_empty_allowlist_browses_existing_data_without_optional_routes_or_gatewa
         assert set(paths) == {
             "/health", "/api/v1/config", "/api/v1/sessions", "/api/v1/sessions/{sid}",
             "/api/v1/sessions/{sid}/events", "/api/v1/sessions/{sid}/stats",
+            "/api/v1/sessions/{sid}/producer",
         }
         assert not hasattr(client.app.state, "gateway")
         assert client.get(f"/api/v1/sessions/{sid}/events").json()["items"]
         assert client.get(f"/api/v1/sessions/{sid}/stats").json()["counts"]
         assert client.get("/api/v1/config").json()["classification_taxonomy"] is None
+        assert client.put(f"/api/v1/sessions/{sid}/producer", json={"producer": "agentboard"}).json()[
+            "producer"] == "agentboard"
     assert store.raw_imports(sid)  # Disabling a capability does not delete existing evidence.
 
 

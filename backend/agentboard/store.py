@@ -11,13 +11,15 @@ from .capture_store import CAPTURE_SCHEMA
 from .domain import RawLine, RawTraceEnd, Session
 from .input_origin import session_input_origin
 from .lineage import expanded, leaves, resolve, same_value, spec
+from .producer import classification_exclusion, otlp_producer
 from .timestamps import format_timestamp, timestamp_ns
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
  id TEXT PRIMARY KEY, agent TEXT NOT NULL, title TEXT NOT NULL,
  started_at TEXT NOT NULL, metadata TEXT NOT NULL, classification TEXT,
- identity_kind TEXT NOT NULL DEFAULT 'session'
+ identity_kind TEXT NOT NULL DEFAULT 'session',
+ producer TEXT CHECK(producer IS NULL OR producer='agentboard')
 );
 CREATE INDEX IF NOT EXISTS sessions_started ON sessions(started_at DESC, id);
 CREATE TABLE IF NOT EXISTS events (
@@ -71,7 +73,7 @@ CREATE TABLE IF NOT EXISTS rollout_line_fingerprints (
 );
 CREATE INDEX IF NOT EXISTS sessions_identity ON sessions(identity_kind,started_at DESC,id);
 """ + CAPTURE_SCHEMA + """
-PRAGMA user_version = 9;
+PRAGMA user_version = 10;
 """
 
 
@@ -105,7 +107,7 @@ class Store:
             # Do not use executescript: it commits before running, breaking atomic migration.
             db.execute("BEGIN IMMEDIATE")
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in range(10):
+            if version not in range(11):
                 raise ValueError("Unsupported database schema version")
             if version == 1:
                 self._migrate_timestamps(db)
@@ -113,9 +115,18 @@ class Store:
                 columns = {r["name"] for r in db.execute("PRAGMA table_info(sessions)")}
                 if "identity_kind" not in columns:
                     db.execute("ALTER TABLE sessions ADD COLUMN identity_kind TEXT NOT NULL DEFAULT 'session'")
+            if 0 < version < 10:
+                columns = {r["name"] for r in db.execute("PRAGMA table_info(sessions)")}
+                if "producer" not in columns:
+                    db.execute("ALTER TABLE sessions ADD COLUMN producer TEXT "
+                               "CHECK(producer IS NULL OR producer='agentboard')")
             for statement in SCHEMA.split(";"):
                 if statement.strip():
                     db.execute(statement)
+            if version < 10:
+                db.execute("""UPDATE sessions SET producer='agentboard' WHERE producer IS NULL AND (
+                    agent='replay' OR json_extract(metadata,'$.originator') IN ('agentboard','agentboard_classifier')
+                    OR json_extract(metadata,'$.\"service.name\"') IN ('agentboard','agentboard_classifier'))""")
             if version < 8:
                 archived = db.execute(
                     """SELECT r.session_id,l.sequence,l.content FROM raw_imports r
@@ -241,15 +252,18 @@ class Store:
                 elif isinstance(item, Session):
                     sessions.add(item.id)
                     db.execute(
-                        """INSERT INTO sessions(id,agent,title,started_at,metadata,identity_kind) VALUES(?,?,?,?,?,?)
+                        """INSERT INTO sessions(id,agent,title,started_at,metadata,identity_kind,producer)
+                        VALUES(?,?,?,?,?,?,?)
                         ON CONFLICT(id) DO UPDATE SET
                         title=CASE WHEN excluded.title='Untitled session' THEN sessions.title ELSE excluded.title END,
                         agent=CASE WHEN excluded.agent='codex' THEN 'codex' ELSE sessions.agent END,
                         started_at=min(sessions.started_at,excluded.started_at),
                         identity_kind=CASE WHEN excluded.identity_kind='session' THEN 'session'
                             ELSE sessions.identity_kind END,
+                        producer=coalesce(excluded.producer,sessions.producer),
                         metadata=json_patch(sessions.metadata,excluded.metadata)""",
-                        (item.id, item.agent, item.title, item.started_at, json.dumps(item.metadata), item.identity_kind),
+                        (item.id, item.agent, item.title, item.started_at, json.dumps(item.metadata),
+                         item.identity_kind, item.producer),
                     )
                     stored = self.session_row(db.execute("SELECT * FROM sessions WHERE id=?", (item.id,)).fetchone())
                     self._save_field_sources(
@@ -510,7 +524,7 @@ class Store:
         # Only discard generated, empty shells; retain user metadata, labels and raw archives.
         for sid in ids:
             row = db.execute("SELECT * FROM sessions WHERE id=?", (sid,)).fetchone()
-            if (row and row["title"] == "Untitled session" and not row["classification"]
+            if (row and row["title"] == "Untitled session" and not row["classification"] and not row["producer"]
                     and set(json.loads(row["metadata"])) <= {"service.name"}):
                 db.execute("""DELETE FROM sessions WHERE id=?
                     AND NOT EXISTS(SELECT 1 FROM events WHERE session_id=?)
@@ -521,7 +535,7 @@ class Store:
         changed = 0
         old_sessions = set()
         for trace in traces:
-            rows = db.execute("""SELECT e.row_id,e.id,e.session_id,e.start_time,s.agent,
+            rows = db.execute("""SELECT e.row_id,e.id,e.session_id,e.start_time,e.attributes,s.agent,
                     e.span_id,e.parent_span_id,i.direct_session_id,i.evidence
                 FROM otlp_session_evidence i JOIN events e ON e.id=i.event_id
                 JOIN sessions s ON s.id=e.session_id
@@ -559,11 +573,13 @@ class Store:
                                "session_id": target, "trace_id": trace}
                 if row["session_id"] != target:
                     identity_kind = "unattributed_trace" if basis == "unattributed trace" else "session"
-                    db.execute("""INSERT INTO sessions(id,agent,title,started_at,metadata,identity_kind)
-                        VALUES(?,?,'Untitled session',?,'{}',?) ON CONFLICT(id) DO UPDATE SET
+                    db.execute("""INSERT INTO sessions(id,agent,title,started_at,metadata,identity_kind,producer)
+                        VALUES(?,?,'Untitled session',?,'{}',?,?) ON CONFLICT(id) DO UPDATE SET
                         started_at=min(sessions.started_at,excluded.started_at),
-                        identity_kind=excluded.identity_kind""",
-                               (target, row["agent"], row["start_time"], identity_kind))
+                        identity_kind=excluded.identity_kind,
+                        producer=coalesce(excluded.producer,sessions.producer)""",
+                               (target, row["agent"], row["start_time"], identity_kind,
+                                otlp_producer(json.loads(row["attributes"]))))
                     association["previous_session_id"] = row["session_id"]
                     db.execute("""UPDATE events SET session_id=?,
                         attributes=json_set(attributes,'$.agentboard_session_association',json(?))
@@ -690,7 +706,17 @@ class Store:
         with self.connect() as db:
             return self.session_row(db.execute("SELECT * FROM sessions WHERE id=?", (sid,)).fetchone())
 
-    def list_sessions(self, limit=50, offset=0, q="", category="", identity_kind="session"):
+    def set_producer(self, sid, producer):
+        if producer not in (None, "agentboard"):
+            raise ValueError("Producer must be agentboard or null")
+        with self.connect() as db:
+            if not db.execute("UPDATE sessions SET producer=? WHERE id=?", (producer, sid)).rowcount:
+                raise KeyError("Session not found")
+            # An operator assertion must not retain a source-derived evidence link.
+            db.execute("DELETE FROM session_field_sources WHERE session_id=? AND field='/producer'", (sid,))
+            return self.session_row(db.execute("SELECT * FROM sessions WHERE id=?", (sid,)).fetchone())
+
+    def list_sessions(self, limit=50, offset=0, q="", category="", identity_kind="session", producer=""):
         where = "WHERE (title LIKE ? OR id LIKE ?)"
         args = [f"%{q}%", f"%{q}%"]
         if identity_kind == "unattributed":
@@ -699,8 +725,14 @@ class Store:
             where += " AND identity_kind='session'"
         elif identity_kind != "all":
             raise ValueError("Unknown identity kind")
+        if producer == "agentboard":
+            where += " AND producer='agentboard'"
+        elif producer == "unmarked":
+            where += " AND producer IS NULL"
+        elif producer:
+            raise ValueError("Unknown producer filter")
         if category == "unclassified":
-            where += " AND classification IS NULL"
+            where += " AND classification IS NULL AND producer IS NOT 'agentboard'"
         elif category:
             where += " AND json_extract(classification,'$.category')=?"
             args.append("bug-fixing" if category == "debugging" else category)
@@ -796,7 +828,9 @@ class Store:
     def classification_candidates(self, limit=None, force=False):
         """Snapshot eligible IDs before classifications change the unclassified set."""
         with self.connect() as db:
-            where = "identity_kind='session'" + ("" if force else " AND classification IS NULL")
+            where = "identity_kind='session' AND producer IS NOT 'agentboard'"
+            if not force:
+                where += " AND classification IS NULL"
             return [r[0] for r in db.execute(
                 f"SELECT id FROM sessions WHERE {where} ORDER BY started_at DESC,id LIMIT ?",
                 (-1 if limit is None else limit,),
@@ -887,6 +921,9 @@ class Store:
         return {"items": groups, "scope": "full_session_source", "note": PARALLEL_NOTE}
 
     def classify(self, sid, result):
-        self.get_session(sid)
         with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            session = self.session_row(db.execute("SELECT * FROM sessions WHERE id=?", (sid,)).fetchone())
+            if reason := classification_exclusion(session):
+                raise ValueError(reason)
             db.execute("UPDATE sessions SET classification=? WHERE id=?", (json.dumps(result), sid))

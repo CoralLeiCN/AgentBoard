@@ -45,10 +45,11 @@ async function loadSessions() {
   const request=++state.listRequest;
   const params=new URLSearchParams({limit:20,offset:state.offset,q:$('#search').value,identity_kind:state.listKind});
   if(hasFeature('classification'))params.set('category',$('#category').value);
+  params.set('producer',$('#producer').value);
   const data=await json(`/api/v1/sessions?${params}`);
   if(request!==state.listRequest)return;
   state.next=data.next_offset;
-  state.unclassified=data.items.filter(s=>s.identity_kind==='session'&&!s.classification).map(s=>s.id);
+  state.unclassified=data.items.filter(s=>s.identity_kind==='session'&&s.producer!=='agentboard'&&!s.classification).map(s=>s.id);
   $('#purpose-controls').hidden=state.listKind!=='session'||!state.features.includes('classification');
   $('#classify-page').disabled=state.classifying||!state.unclassified.length;
   $('#classify-page').textContent=`✧ Classify this page (${state.unclassified.length})`;
@@ -62,7 +63,7 @@ async function loadSessions() {
   $('#identity-column').textContent=unattributed?'TELEMETRY GROUP':'SESSION'; $('#search').placeholder=unattributed?'Search telemetry…':'Search sessions…'; $('#search').setAttribute('aria-label',unattributed?'Search telemetry':'Search sessions');
   $('#identity-note').textContent=unattributed?'These records have no unambiguous conversation identity. Each trace or resource group remains inspectable; it is not counted as a Codex session.':'Sessions are grouped by recorded conversation identity. Counts include imported and observed sessions, including automatic reviewers; they are not a count of human conversations.';
   $('#empty').hidden=data.items.length>0; if(!data.items.length&&unattributed)$('#empty').innerHTML='<h2>No unattributed telemetry matches</h2><p>Change the search or filter.</p>'; else if(!data.items.length)$('#empty').innerHTML=`<h2>No matching sessions</h2><p>${canImport()?'Import a rollout, load the demo, or change the filter.':'No sessions match this view. Change the search or filter.'} Background traces appear under Unattributed telemetry.</p>`;
-  $('#sessions').innerHTML=data.items.map(s=>`<tr tabindex="0" data-id="${esc(s.id)}"><td><span class="session-name">${esc(s.title==='Untitled session'&&s.identity_kind!=='session'?'Unattributed telemetry':s.title)}</span><span class="session-sub">${esc(s.id.slice(0,28))}${s.input_origin?.origin==='internal'?' · Internal agent/reviewer':''}</span></td><td><span class="pill">${esc(s.agent)}</span></td><td${hasFeature('classification')?'':' hidden'}>${s.classification?`<span class="pill category">${esc(purposeLabel(s.classification.category))}</span> ${s.classification.dummy?'<span class="pill dummy">dummy</span>':''}`:'<span class="muted">Unclassified</span>'}</td><td>${date(String(s.started_at))}</td><td>↗</td></tr>`).join('');
+  $('#sessions').innerHTML=data.items.map(s=>`<tr tabindex="0" data-id="${esc(s.id)}"><td><span class="session-name">${esc(s.title==='Untitled session'&&s.identity_kind!=='session'?'Unattributed telemetry':s.title)}</span><span class="session-sub">${esc(s.id.slice(0,28))}${s.producer==='agentboard'?' · AgentBoard-generated':''}${s.input_origin?.origin==='internal'?' · Internal agent/reviewer':''}</span></td><td><span class="pill">${esc(s.agent)}</span></td><td${hasFeature('classification')?'':' hidden'}>${s.classification?`<span class="pill category">${esc(purposeLabel(s.classification.category))}</span> ${s.classification.dummy?'<span class="pill dummy">dummy</span>':''}`:s.producer==='agentboard'?'<span class="muted">Excluded</span>':'<span class="muted">Unclassified</span>'}</td><td>${date(String(s.started_at))}</td><td>↗</td></tr>`).join('');
   $('#page-info').textContent=data.total?`${state.offset+1}–${state.offset+data.items.length} of ${data.total} ${unattributed?'telemetry groups':'sessions'}`:'No sessions found';
   $('#prev').disabled=state.offset===0;$('#next').disabled=state.next===null;
   document.querySelectorAll('[data-id]').forEach(row=>{const open=()=>location.hash=encodeURIComponent(row.dataset.id);row.onclick=open;row.onkeydown=e=>{if(e.key==='Enter')open();};});
@@ -86,13 +87,13 @@ async function classifyPage() {
       progress.textContent=`Classifying ${index+1} of ${ids.length}…`;
       try {
         const session=await json(`/api/v1/sessions/${encodeURIComponent(sid)}`);
-        if(session.classification){skipped++;continue;}
+        if(session.producer==='agentboard'||session.classification){skipped++;continue;}
         const result=await json(`/api/v1/sessions/${encodeURIComponent(sid)}/classify`,{method:'POST'});
         completed++;if(result.dummy)dummy++;
         if(state.sid===sid&&state.session){state.session.classification=result;renderClassification(state.session);}
       } catch(e) { failed++;errors.push(`${sid}: ${e.message}`); }
     }
-    progress.textContent=`${state.stopClassification?'Stopped. ':''}${completed} classified${dummy?` (${dummy} dummy)`:''}, ${skipped} already classified, ${failed} failed.${errors.length?' '+errors.join(' · '):''}`;
+    progress.textContent=`${state.stopClassification?'Stopped. ':''}${completed} classified${dummy?` (${dummy} dummy)`:''}, ${skipped} skipped, ${failed} failed.${errors.length?' '+errors.join(' · '):''}`;
   } finally {
     state.classifying=false;$('#stop-classification').hidden=true;
     await loadSessions();
@@ -117,7 +118,9 @@ async function openSession(sid) {
   const available=[...sources];
   if(hasFeature('unified_timeline')&&(sources.has('codex_jsonl')||sources.has('codex_item')))available.unshift('unified');
   const source=$('#source');source.innerHTML=available.map(value=>`<option value="${esc(value)}">${esc(sourceLabel(value))}</option>`).join('');source.value=available[0];
-  $('#classify').hidden=unidentified||!state.features.includes('classification');
+  $('#producer-note').hidden=s.producer!=='agentboard';
+  $('#producer-note').textContent='AgentBoard-generated session. Retained for inspection and excluded from purpose classification.';
+  $('#classify').hidden=unidentified||s.producer==='agentboard'||!state.features.includes('classification');
   if(hasFeature('token_usage'))run(()=>loadUsage())();
   await loadEvents();
 }
@@ -320,6 +323,7 @@ document.querySelectorAll('[data-event-view]').forEach(button=>button.onclick=()
 $('#refresh').onclick=run(loadSessions);$('#prev').onclick=run(async()=>{state.offset=Math.max(0,state.offset-20);await loadSessions();});$('#next').onclick=run(async()=>{state.offset=state.next;await loadSessions();});
 $('#search').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(run(async()=>{state.offset=0;await loadSessions();}),250);};
 document.querySelectorAll('[data-list-kind]').forEach(button=>button.onclick=run(async()=>{state.listKind=button.dataset.listKind;state.offset=0;document.querySelectorAll('[data-list-kind]').forEach(b=>b.classList.toggle('active',b===button));await loadSessions();}));
+$('#producer').onchange=()=>{state.offset=0;run(loadSessions)();};
 $('#category').onchange=run(async()=>{state.offset=0;await loadSessions();});
 $('#import').onclick=()=>{if(canImport())$('#file').click();};
 $('#file').onchange=run(async()=>{if(!canImport())return;const files=[...$('#file').files];let last;for(const file of files){const result=await json('/api/v1/import/codex',{method:'POST',headers:{'Content-Type':'application/x-ndjson'},body:file});last=result.session_ids[0];notice(`Imported ${file.name}: ${result.inserted_events} new events`);}$('#file').value='';await loadSessions();if(last)location.hash=encodeURIComponent(last);});
@@ -328,7 +332,7 @@ document.querySelectorAll('[data-tab]').forEach(button=>button.onclick=run(async
 $('#source').onchange=run(()=>loadEvents());$('#more').onclick=run(()=>loadEvents(true));$('#event-search').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(run(()=>loadEvents()),250);};
 $('#classify-page').onclick=run(classifyPage);
 $('#stop-classification').onclick=()=>{state.stopClassification=true;};
-$('#classify').onclick=run(()=>busy($('#classify'),async()=>{if(!hasFeature('classification'))return;const sid=state.sid;const result=await json(`/api/v1/sessions/${encodeURIComponent(sid)}/classify`,{method:'POST'});if(state.sid===sid){state.session.classification=result;renderClassification(state.session);}notice(result.dummy?`Classified with dummy model: ${result.fallback_reason}`:'Session purpose classified');}));
+$('#classify').onclick=run(()=>busy($('#classify'),async()=>{if(!hasFeature('classification')||state.session?.producer==='agentboard')return;const sid=state.sid;const result=await json(`/api/v1/sessions/${encodeURIComponent(sid)}/classify`,{method:'POST'});if(state.sid===sid){state.session.classification=result;renderClassification(state.session);}notice(result.dummy?`Classified with dummy model: ${result.fallback_reason}`:'Session purpose classified');}));
 $('#export').onclick=run(()=>busy($('#export'),async()=>{if(!hasFeature('export'))return;const response=await api(`/api/v1/sessions/${encodeURIComponent(state.sid)}/export${state.tab==='inputs'?'?kind=user':''}`);download(await response.text(),'agentboard-events.jsonl');}));
 async function branch(mode){if(!hasFeature('inputs',mode==='codex-plan'?'native_resume':'replay'))return;const replacement=$('#replacement').value;if(!replacement.trim())throw Error('Enter a replacement input');const result=await json(`/api/v1/sessions/${encodeURIComponent(state.sid)}/${mode}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({input_id:state.input,replacement})});$('#branch-dialog').close();if(mode==='codex-plan'){download(JSON.stringify(result,null,2),'codex-branch-plan.json','application/json');notice('Plan downloaded. Use agentboard resume to execute locally.');}else{notice(result.dummy?'Replay completed with dummy model':'Replay completed');location.hash=encodeURIComponent(result.session_id);}}
 $('#replay').onclick=run(()=>busy($('#replay'),()=>branch('replay')));$('#native-plan').onclick=run(()=>busy($('#native-plan'),()=>branch('codex-plan')));

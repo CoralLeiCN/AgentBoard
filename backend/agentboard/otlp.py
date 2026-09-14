@@ -11,6 +11,7 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTrace
 from opentelemetry.proto.logs.v1.logs_pb2 import SeverityNumber
 
 from .domain import Event, Session, is_user_input_tool, stable_id
+from .producer import otlp_producer
 from .timestamps import format_timestamp
 
 
@@ -195,6 +196,7 @@ def normalize(data, signal):
                     else "otel",
                     started_at=format_timestamp(ts),
                     metadata={"service.name": attrs.get("service.name", "unknown")},
+                    producer=otlp_producer(attrs),
                 )
                 yield Event(
                     id=stable_id(source, trace_id, span_id)

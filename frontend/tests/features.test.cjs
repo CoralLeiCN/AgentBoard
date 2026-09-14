@@ -66,7 +66,7 @@ function setup(features=[],{adapters=['codex'],source='codex_jsonl',savedView='r
     }});
   vm.runInContext(readFileSync('frontend/provenance.js','utf8'),context);
   vm.runInContext(app,context);
-  return {context,node,query,calls,config,event:current};
+  return {context,node,query,calls,config,event:current,session};
 }
 
 test('all optional features can be disabled while saved sessions, timelines and event details remain usable',async()=>{
@@ -147,4 +147,28 @@ test('native resume and replay expose only their respective branch actions',asyn
     assert.ok(calls.some(({path})=>path.endsWith(feature==='native_resume'?'/codex-plan':'/replay')));
     assert.ok(calls.every(({path})=>!path.endsWith(feature==='native_resume'?'/replay':'/codex-plan')));
   }
+});
+
+test('AgentBoard sessions stay visible and filterable while classification controls exclude them',async()=>{
+  const {context,node,calls,session}=setup(['classification']);
+  session.producer='agentboard';session.classification=null;
+  await context.init();
+  assert.match(node('#sessions').innerHTML,/Saved session/);
+  assert.match(node('#sessions').innerHTML,/AgentBoard-generated/);
+  assert.match(node('#sessions').innerHTML,/Excluded/);
+  assert.equal(node('#classify-page').disabled,true);
+  node('#producer').value='agentboard';
+  await context.loadSessions();
+  assert.ok(calls.some(({path})=>path.includes('producer=agentboard')));
+  await context.openSession('session-1');
+  assert.equal(node('#classify').hidden,true);
+  assert.equal(node('#producer-note').hidden,false);
+  assert.match(node('#producer-note').textContent,/excluded from purpose classification/);
+  const before=calls.length;
+  await node('#classify').onclick();
+  assert.equal(calls.length,before);
+  session.producer=null;
+  await context.openSession('session-1');
+  assert.equal(node('#producer-note').hidden,true);
+  assert.equal(node('#classify').hidden,false);
 });

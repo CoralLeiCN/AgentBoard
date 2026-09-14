@@ -129,7 +129,7 @@ def test_v7_upgrade_backfills_fingerprints_before_conflicting_reimport_without_l
         db.execute("PRAGMA user_version=7")
     upgraded = Store(path, retain_lineage=False)
     with upgraded.connect() as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 9
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 10
         hashes = db.execute("SELECT sequence,sha256 FROM rollout_line_fingerprints ORDER BY sequence").fetchall()
         assert [(row[0], row[1]) for row in hashes] == [
             (index, hashlib.sha256(line.encode()).digest())

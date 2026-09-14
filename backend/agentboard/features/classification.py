@@ -16,6 +16,7 @@ def router(services: ClassificationServices):
         ClassificationResult,
         classification_schema,
     )
+    from ..producer import classification_exclusion
     from ..timestamps import format_timestamp
 
     @app.get("/api/v1/classification-schema")
@@ -32,8 +33,8 @@ def router(services: ClassificationServices):
 
     @app.put("/api/v1/sessions/{sid}/classification", response_model=ClassificationResult, response_model_exclude_none=True)
     def external_classification(sid: str, body: ClassificationRequest):
-        if services.get_session(sid)["identity_kind"] != "session":
-            raise ValueError("Purpose classification requires a session, not unattributed telemetry")
+        if reason := classification_exclusion(services.get_session(sid)):
+            raise ValueError(reason)
         result = {
             **body.model_dump(mode="json", exclude_none=True), "provider": "external", "dummy": False,
             "taxonomy_version": TAXONOMY_VERSION, "classified_at": format_timestamp(time.time_ns()),
