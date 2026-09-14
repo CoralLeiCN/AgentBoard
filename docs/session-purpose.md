@@ -2,6 +2,8 @@
 
 Implemented 2026-09-07. Run an optional LLM to assign one primary purpose per session, or let an external agent submit a result. Importing and collecting telemetry do not invoke models. The `classification` feature is off by default; add it to the chosen [feature allowlist](features.md#configuration) for HTTP/UI use or CLI commands.
 
+AgentBoard-generated sessions (`producer="agentboard"`) are retained for inspection and excluded from all classification paths, including `--force` and external submissions. Use the **AgentBoard-generated** producer filter to inspect them. See [producer identity, marking and backfill rules](data-lineage.md#321-session-producer).
+
 ## Categories
 
 The [2025 enterprise AI report, page 14](https://cdn.openai.com/pdf/7ef17d82-96bf-4dd1-9df2-228f7f377a29/the-state-of-enterprise-ai_2025-report.pdf#page=14) supplies six broad task types. AgentBoard adapts these into session labels and adds debugging and an unclear/other fallback. This is an application taxonomy, not OpenAI's original classifier or a reproduction of its study.
@@ -17,7 +19,7 @@ The [2025 enterprise AI report, page 14](https://cdn.openai.com/pdf/7ef17d82-96b
 | `guidance` | Explain a procedure, teach, or advise |
 | `other` | Another purpose or insufficient evidence for a more specific label |
 
-Existing IDs and stored results remain valid. New submissions may use `debugging` as an alias for `bug-fixing`; either filter spelling finds those results. `unclassified` is a list filter for missing results, not a model category. Reimports preserve labels. Reclassification explicitly replaces the saved result; there is no automatic refresh after a session grows.
+Existing IDs and stored results remain valid. New submissions may use `debugging` as an alias for `bug-fixing`; either filter spelling finds those results. `unclassified` is a list filter for missing results on sessions whose producer is not AgentBoard, not a model category. Reimports preserve labels. Reclassification explicitly replaces the saved result; there is no automatic refresh after a session grows.
 
 ## Prompt management
 
@@ -93,7 +95,7 @@ Live tests accept only `http://192.168.1.220:30000/v1`. The shared harness disco
 
 ## Run an external agent
 
-Use the same backend API as the frontend:
+Use the same backend API as the frontend. If the worker runs through Codex, identify its client as `agentboard_classifier` so its imported rollout is marked automatically. For an already imported worker, call `PUT /api/v1/sessions/WORKER_SESSION_ID/producer` with `{"producer":"agentboard"}` before polling. Mark the worker's own session, not the session it is classifying. This preserves its logs while preventing classification of classifier sessions. Other SDK client names are not excluded automatically.
 
 1. Read `GET /api/v1/config` for `classification_taxonomy` (version, IDs, descriptions, source), and `GET /api/v1/classification-schema` for the model JSON Schema.
 2. List sessions with `GET /api/v1/sessions?category=unclassified`; follow `next_offset`. Collect candidate IDs before writing labels so the filtered pages do not shift under the worker.

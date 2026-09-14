@@ -144,6 +144,7 @@ def main():
         store = runtime.store
         if args.command == "classify":
             from .models import ModelServiceError
+            from .producer import classification_exclusion
 
             service = runtime.services_for("classification")
             selected = (store.classification_candidates(args.limit, args.force) if args.all
@@ -151,7 +152,12 @@ def main():
             completed = skipped = failures = 0
             for sid in selected:
                 try:
-                    if store.get_session(sid)["classification"] and not args.force:
+                    session = store.get_session(sid)
+                    reason = classification_exclusion(session)
+                    if reason:
+                        skipped += 1
+                        result = {"status": "skipped", "reason": reason}
+                    elif session["classification"] and not args.force:
                         skipped += 1
                         result = {"status": "skipped", "reason": "Already classified; use --force to replace"}
                     else:

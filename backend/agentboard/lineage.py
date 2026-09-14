@@ -82,6 +82,8 @@ class CodexLineage:
             **defaults(session.model_dump()),
             **copied(session.metadata, "/metadata", line, "/payload"),
             "/id": self.session_id,
+            "/producer": spec("inferred", "Exact AgentBoard originator match; null means no recognized producer. This does not verify authorship.",
+                              ref(line, "/payload/originator", "classification")),
             "/started_at": spec("normalized", "Outer timestamp normalized to UTC RFC 3339.", ref(line, "/timestamp")),
             "/input_origin": spec("inferred", "Infer internal session origin and parent from recorded source metadata using codex-input-v1; absent internal evidence is unknown.",
                                   *self.session_input_sources),

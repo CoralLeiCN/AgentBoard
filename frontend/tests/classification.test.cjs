@@ -21,7 +21,7 @@ test('page batch continues after errors, skips existing labels, and reports dumm
   await fixture.run();
   assert.equal(posts.length,2);
   const progress=fixture.nodes['#classification-progress'].textContent;
-  assert.match(progress,/1 classified \(1 dummy\), 1 already classified, 1 failed/);
+  assert.match(progress,/1 classified \(1 dummy\), 1 skipped, 1 failed/);
   assert.match(progress,/a: No recorded text/);
   assert.equal(fixture.state.classifying,false);
   assert.equal(fixture.nodes['#stop-classification'].hidden,true);
@@ -51,4 +51,15 @@ test('changing the displayed page does not change the batch already requested',a
   });
   await fixture.run();
   assert.deepEqual(posts,['a','b','c'].map(sid=>`/api/v1/sessions/${sid}/classify`));
+});
+
+test('a producer marked after batch selection is skipped before posting',async()=>{
+  const posts=[];
+  const fixture=setup(async(path,options)=>{
+    if(options){posts.push(path);return {dummy:false};}
+    return {classification:null,producer:path.endsWith('/b')?'agentboard':null};
+  });
+  await fixture.run();
+  assert.deepEqual(posts,['a','c'].map(sid=>`/api/v1/sessions/${sid}/classify`));
+  assert.match(fixture.nodes['#classification-progress'].textContent,/2 classified, 1 skipped, 0 failed/);
 });

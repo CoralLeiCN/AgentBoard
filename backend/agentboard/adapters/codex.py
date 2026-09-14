@@ -7,6 +7,7 @@ import shlex
 from ..domain import Event, RawLine, RawTraceEnd, Session, is_user_input_tool, stable_id
 from ..input_origin import attribute_input, session_input_origin
 from ..lineage import CodexLineage, copied, ref, spec
+from ..producer import codex_producer
 from ..timestamps import format_timestamp, normalize_timestamp
 
 
@@ -29,7 +30,7 @@ def command_text(command):
 
 
 class CodexAdapter:
-    mapping_version = "codex-jsonl-v5"
+    mapping_version = "codex-jsonl-v6"
 
     def __init__(self, *, field_lineage=True):
         self.field_lineage = field_lineage
@@ -136,6 +137,7 @@ class CodexAdapter:
                     id=sid,
                     started_at=ts,
                     metadata=dict(p),
+                    producer=codex_producer(p),
                 )
                 if lineage:
                     lineage.session(session, r, seq)

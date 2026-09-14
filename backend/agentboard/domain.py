@@ -3,7 +3,7 @@ import json
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, BeforeValidator, Field, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
 from .timestamps import normalize_timestamp
 
@@ -37,8 +37,15 @@ class Session(BaseModel):
     title: str = "Untitled session"
     started_at: Timestamp
     metadata: dict = Field(default_factory=dict)
+    producer: Literal["agentboard"] | None = None
     identity_kind: Literal["session", "unattributed_trace", "unattributed_resource"] = "session"
     field_lineage: dict = Field(default_factory=dict, exclude=True)
+
+
+class SessionProducerUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    producer: Literal["agentboard"] | None
 
 
 class Event(BaseModel):

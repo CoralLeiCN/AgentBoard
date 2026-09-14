@@ -352,21 +352,22 @@ Acceptance: select JSON, close the inspector, reload the dashboard, and open a d
 
 **API-01 — Implemented**
 
-Session records include identity, agent, title, start time, metadata, and optional classification. Events include identity/order, session/turn/span relationships, kind/name, timestamps, timing quality, source, status, text, and extensible attributes.
+Session records include identity, agent, nullable producer, title, start time, metadata, and optional classification. Implemented 2026-09-11: `producer="agentboard"` sessions remain inspectable but are excluded from purpose classification, including forced batches and direct/external API calls. The UI labels and filters them. [Producer mappings and verification](data-lineage.md#321-session-producer). Events include identity/order, session/turn/span relationships, kind/name, timestamps, timing quality, source, status, text, and extensible attributes.
 
 Supported event kinds are `user`, `assistant`, `llm`, `tool`, `user_wait`, and `event`. Canonical timestamps use [RFC 3339](https://www.rfc-editor.org/rfc/rfc3339.html#section-5.6) strings in the domain model, SQLite TEXT columns, API, and normalized exports. Use `start_time`, nullable `end_time`, and session `started_at`, normalized to UTC `Z` with exactly nine fractional digits. Fixed timezone and precision preserve chronological string ordering and nanosecond precision. Integers may be used transiently for source conversion and duration arithmetic. Duration metrics remain milliseconds. Raw retained source objects keep their original timestamp fields and formats.
 
 Accept known numeric timezone offsets and normalize them to UTC. Support instants on/after the Unix epoch with up to nine fractional digits; reject leap seconds, unknown `-00:00` offsets, and finer precision without silently rounding.
 
-Startup migrates supported databases to schema v9 in one transaction under a write lock, preserving IDs, pagination cursors, metadata, and classifications. Earlier migrations introduced RFC 3339 timestamps, raw archives, OTLP identities, event source links, and per-field lineage. Schema v9 adds independent raw-capture tables without fabricating old capture history. Schema v8 added mandatory source-line fingerprints for reimport conflict detection and hashes existing Codex archives without renormalizing events. Hashes contain no source text; see [migration and fingerprint semantics](data-lineage.md#8-identity-transactions-and-upgrades). Stop older processes before upgrading; failures roll back, and older binaries cannot use schema v9.
+Startup migrates supported databases to schema v10 in one transaction under a write lock, preserving IDs, pagination cursors, metadata, and classifications. Earlier migrations introduced RFC 3339 timestamps, raw archives, OTLP identities, event source links, and per-field lineage. Schema v10 adds/backfills the producer field using the documented exact matches; raw archives and saved labels are preserved. Schema v9 added independent raw-capture tables without fabricating old capture history. Schema v8 added mandatory source-line fingerprints for reimport conflict detection and hashes existing Codex archives without renormalizing events. Hashes contain no source text; see [migration and fingerprint semantics](data-lineage.md#8-identity-transactions-and-upgrades). Stop older processes before upgrading; failures roll back, and older binaries cannot use schema v10.
 
 Old normalized timestamp keys `start_ns`, `end_ns`, and `started_ns` are replaced by the current names. Timestamp conversion needs no reimport; backfilling raw evidence requires the original rollouts or an existing complete capture. Refresh the UI after restart. Existing OTLP associations require the explicit [repair procedure](data-lineage.md#9-live-telemetry-mappings). Database row ID, source sequence, and temporal order remain distinct.
 
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /api/v1/config` | Enabled features and catalog, adapters, model mode, import body limit, and enabled-feature metadata. |
-| `GET /api/v1/sessions` | Search/filter observed sessions with limit/offset pagination. `identity_kind=unattributed` exposes telemetry groups; `all` includes both. |
-| `GET /api/v1/sessions/{sid}` | Session metadata and classification. |
+| `GET /api/v1/sessions` | Search/filter observed sessions with limit/offset pagination. `identity_kind=unattributed` exposes telemetry groups; `all` includes both. `producer=agentboard` or `unmarked` filters producer identity. |
+| `GET /api/v1/sessions/{sid}` | Session metadata, producer and classification. |
+| `PUT /api/v1/sessions/{sid}/producer` | Mark or clear the AgentBoard producer on an existing session; core endpoint. |
 | `GET /api/v1/sessions/{sid}/events` | Filter by source, kind, and text; paginate with a cursor. |
 | `GET /api/v1/sessions/{sid}/parallel-groups` | Derived tool-overlap groups for the full session or selected source. |
 | `GET /api/v1/sessions/{sid}/raw-imports` | List complete Codex source archives with hashes and mapping versions. |

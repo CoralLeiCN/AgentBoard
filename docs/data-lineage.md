@@ -1,10 +1,10 @@
 # Data lineage and transformation rules
 
-Reviewed against the working source on **2026-09-07**. Canonical storage schema: **v7**. API: **`/api/v1`**.
+Producer identity updated **2026-09-11**. Canonical storage schema: **v10**. API: **`/api/v1`**.
 
 Input attribution, wait semantics, and their regression evidence updated **2026-09-07**.
 
-How AgentBoard obtains, transforms, stores, and presents data, including interpretation and information loss. This documents **current implementation**, not the upstream Codex format or universal release compatibility. New Codex archives record mapping version `codex-jsonl-v5`; earlier normalized rows have no persisted mapping version.
+How AgentBoard obtains, transforms, stores, and presents data, including interpretation and information loss. This documents **current implementation**, not the upstream Codex format or universal release compatibility. New Codex archives record mapping version `codex-jsonl-v6`; earlier normalized rows have no persisted mapping version.
 
 Related: [requirements](specification.md), [architecture](architecture.md), [current correctness gaps](data-quality-gaps.md), and [deferred capabilities](backlog.md).
 
@@ -101,6 +101,28 @@ That file also contained unmapped outer `world_state`/`token_usage_record` and i
 
 Session metadata must precede other records. Repeated same-ID metadata rebuilds the parser’s Session object; section 8 defines store merging.
 
+### 3.2.1 Session producer
+
+Implemented **2026-09-11**, schema v10 / mapping `codex-jsonl-v6`. `Session.producer` is a separate nullable SQLite column and API field. `"agentboard"` identifies application-generated sessions; `null` means unmarked, not verified human or external origin. Agent family, raw metadata, input attribution, and purpose labels remain separate.
+
+| Input | Producer mapping |
+| --- | --- |
+| Codex `session_meta.payload.originator` exactly `agentboard` or `agentboard_classifier` | Inferred `"agentboard"`; the original payload remains unchanged. No prefix matching or general SDK exclusion. |
+| OTLP merged attributes: `agentboard.producer=agentboard`, or `originator` / `service.name` exactly one of those client names | `"agentboard"`. Complete original attributes remain in capture; recorded producer evidence follows spans when their session identity is reconciled. |
+| AgentBoard conversation replay | The application sets `"agentboard"` when creating the replay session. |
+| `PUT /api/v1/sessions/{sid}/producer` with `{"producer":"agentboard"}` or `{"producer":null}` | Explicitly mark or clear an existing session without rewriting raw evidence. Unknown fields/values are rejected. This core endpoint also works when classification is disabled. |
+| No recognized evidence | `null` on a new session. Later imports with no marker preserve an existing producer. |
+
+Synthetic example: a rollout header with `originator="agentboard_classifier"` and `source="vscode"` keeps those values in `metadata`, adds `producer="agentboard"`, and remains fully browsable/exportable. `GET /sessions?producer=agentboard` finds marked sessions; `producer=unmarked` finds null values; omitted/empty includes both. Session counts and statistics still include marked sessions. The UI labels them **AgentBoard-generated**.
+
+All purpose-classification entry points exclude marked sessions: CLI/UI batches, `category=unclassified`, classifier-input GET, classification POST, and external-label PUT. `--force` does not bypass exclusion. Saved older labels remain inspectable. The backend checks again before saving, so marking a session during an in-flight model request prevents the label write, but cannot cancel that already-started request. Other SDK services remain eligible.
+
+The v10 migration preserves existing rows, labels, and archives, and backfills `producer` only from existing replay agent identity or the exact metadata `originator` / `service.name` matches above. It does not scan historical event attributes or fabricate missing worker identities. Reimport/reprocess recognized source data or mark the worker session explicitly to cover other existing data. A later import containing recognized producer evidence can restore a manually cleared marker.
+
+Codex field lineage records the originator match as Inferred. Operator annotations and historical backfills have no verified per-field source link; lineage reports Unknown until matching source evidence is supplied. Producer labels are assertions/mappings, not authenticated authorship. Unmarked external classifier sessions can still be selected; workers must identify themselves before classification polling. Built-in purpose classification calls a model API directly and does not create a separate worker session.
+
+[Producer regressions](../backend/tests/test_producer.py) cover exclusion, other SDK sessions, full raw retention, explicit marking, reimports, migrations, and late telemetry identity. [UI tests](../frontend/tests/features.test.cjs) cover visibility, filtering and classification controls.
+
 ### 3.3 Record-to-event mapping
 
 The table describes the normalized view. Every source field and line also survives independently in the raw archive (§3.5).
@@ -181,7 +203,7 @@ Schema v9 preserves prior archives and adds empty capture tables for older data.
 
 Implemented **2026-09-06** in [adapter](../backend/agentboard/adapters/codex.py), [storage](../backend/agentboard/store.py), [API](../backend/agentboard/api.py), and [CLI](../backend/agentboard/cli.py). Accepted UTF-8 Codex JSONL imports retain every input line as UTF-8 bytes in `raw_lines`, keyed by archive ID and one-based physical `sequence`. This includes blank lines, original timestamp spelling, whitespace, line endings, absent final newline, unknown fields/types, system/developer messages, content parts, and encrypted content. The archive does not decrypt, execute, redact, or normalize these bytes. HTTP gzip input archives the decompressed JSONL, not its compressed transport envelope. Invalid imports roll back these line archives and normalized changes, while the independent original capture remains available.
 
-`raw_imports` records session ID, SHA-256 of concatenated source bytes, byte/line counts, archive creation time, and mapping version `codex-jsonl-v5`. Identical session/hash/mapping imports reuse an archive ID. Changed, appended, or shortened files create distinct archives and preserve prior versions. Latest means the most recently created distinct archive, not the longest file or most recent identical retry. Each distinct snapshot stores all its lines; storage grows with retained versions and has no automatic pruning.
+`raw_imports` records session ID, SHA-256 of concatenated source bytes, byte/line counts, archive creation time, and mapping version `codex-jsonl-v6`. Identical session/hash/mapping imports reuse an archive ID. Changed, appended, or shortened files create distinct archives and preserve prior versions. Latest means the most recently created distinct archive, not the longest file or most recent identical retry. Each distinct snapshot stores all its lines; storage grows with retained versions and has no automatic pruning.
 
 `GET /api/v1/sessions/{sid}/raw-imports` lists archive metadata. `/raw?import_id=ID` exports one exact version; omitting the ID selects the latest. The UI's **Export raw trace** uses that default. CLI equivalents are `agentboard export SESSION_ID --raw [--import-id ID]`. Existing `/export` and input exports remain normalized. Import responses include `raw_import_ids`. No available source returns an empty version list and a 404 raw export, never reconstructed evidence.
 

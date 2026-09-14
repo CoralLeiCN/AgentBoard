@@ -154,7 +154,7 @@ def test_v8_upgrade_preserves_existing_archives_without_fabricating_captures(tmp
     store = Store(path)
     assert b"".join(store.export_raw("raw-test")) == raw_trace()
     with store.connect() as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 9
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 10
         assert db.execute("SELECT count(*) FROM captures").fetchone()[0] == 0
         assert not db.execute("PRAGMA foreign_key_check").fetchall()
 

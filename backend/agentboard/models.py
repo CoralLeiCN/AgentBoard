@@ -14,6 +14,7 @@ from .classification import (
     classification_schema,
 )
 from .domain import Event, Session, stable_id
+from .producer import classification_exclusion
 from .timestamps import format_timestamp
 
 
@@ -150,8 +151,8 @@ class ModelGateway:
 
 def classification_input(store, sid, max_chars):
     session = store.get_session(sid)
-    if session["identity_kind"] != "session":
-        raise ValueError("Purpose classification requires a session, not unattributed telemetry")
+    if reason := classification_exclusion(session):
+        raise ValueError(reason)
     if max_chars < 1:
         raise ValueError("Classification context limit must be positive")
     parts, length, truncated = [], 0, False
@@ -266,6 +267,7 @@ def replay_session(store, sid, input_id, replacement, gateway, max_chars):
         Session(
             id=branch_id,
             agent="replay",
+            producer="agentboard",
             title=replacement[:100],
             started_at=start,
             metadata={

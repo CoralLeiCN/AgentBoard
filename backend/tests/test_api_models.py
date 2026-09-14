@@ -94,6 +94,8 @@ def test_replay_truncates_and_preserves_source(client, imported):
     assert "Recorded tool call" in str(captured)
     assert list(store.export(imported)) == original
     branch = store.get_session(result.json()["session_id"])
+    assert branch["producer"] == "agentboard"
+    assert branch["id"] not in store.classification_candidates(force=True)
     assert branch["metadata"]["parent_session_id"] == imported
     answer = list(store.export(branch["id"]))[-1]
     assert answer["attributes"]["content_origin"] == "model_generated"

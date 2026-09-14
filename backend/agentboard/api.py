@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .config import Settings
+from .domain import SessionProducerUpdate
 from .runtime import Runtime
 
 
@@ -99,13 +100,17 @@ def _create_app(settings, runtime):
     @app.get("/api/v1/sessions")
     def sessions(
         limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), q: str = "", category: str = "",
-        identity_kind: str = "session",
+        identity_kind: str = "session", producer: str = "",
     ):
-        return store.list_sessions(limit, offset, q, category, identity_kind)
+        return store.list_sessions(limit, offset, q, category, identity_kind, producer)
 
     @app.get("/api/v1/sessions/{sid}")
     def session(sid: str):
         return store.get_session(sid)
+
+    @app.put("/api/v1/sessions/{sid}/producer")
+    def session_producer(sid: str, body: SessionProducerUpdate):
+        return store.set_producer(sid, body.producer)
 
     @app.get("/api/v1/sessions/{sid}/events")
     def events(
