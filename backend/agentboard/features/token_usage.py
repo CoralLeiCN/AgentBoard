@@ -10,6 +10,15 @@ from ..services import UsageServices
 def router(services: UsageServices):
     app = APIRouter()
 
+    @app.get("/api/v1/usage-summary")
+    def summary(
+        start: str = "", end: str = "", q: str = "", agent: str = "", producer: str = "",
+        model: str = "", tag: list[str] = Query(default=[]), metadata: str = "{}",
+        limit: int = Query(20, ge=1, le=200), offset: int = Query(0, ge=0),
+    ):
+        return services.dashboard(start=start, end=end, q=q, agent=agent, producer=producer,
+                                  model=model, tags=tag, metadata=metadata, limit=limit, offset=offset)
+
     @app.get("/api/v1/pricing")
     def pricing():
         return services.pricing()

@@ -65,6 +65,7 @@ function setup(features=[],{adapters=['codex'],source='codex_jsonl',savedView='r
       return {ok:true,json:async()=>data,text:async()=>JSON.stringify(data)};
     }});
   vm.runInContext(readFileSync('frontend/provenance.js','utf8'),context);
+  vm.runInContext(readFileSync('frontend/dashboard.js','utf8'),context);
   vm.runInContext(app,context);
   return {context,node,query,calls,config,event:current,session};
 }
@@ -171,4 +172,48 @@ test('AgentBoard sessions stay visible and filterable while classification contr
   await context.openSession('session-1');
   assert.equal(node('#producer-note').hidden,true);
   assert.equal(node('#classify').hidden,false);
+});
+
+test('disabled usage dashboard makes no requests even through a saved dashboard URL',async()=>{
+  const {context,node,calls}=setup();context.location.hash='#/usage?tag=work';await context.init();
+  assert.equal(node('#dashboard-view').hidden,true);
+  assert.equal(node('#dashboard-nav').hidden,true);
+  assert.ok(calls.every(({path})=>!path.includes('/usage-summary')));
+});
+test('dashboard navigation, filters and stale requests stay independent of the session list',async()=>{
+  const {context,node,calls}=setup(['token_usage']);
+  const empty={summary:{sessions:0},items:[],next_offset:null,facets:{agents:['codex'],models:['test'],tags:[],metadata:{'/flag':['true']}},
+    filters:{metadata:{'/flag':true},tags:['work'],start:'2026-09-07T00:00:00Z',end:'2026-09-08T00:00:00Z',q:'find',agent:'',model:'',producer:''}};
+  context.dashboardHTML=()=>'<p>Summary ready</p>';
+  const originalFetch=context.fetch;
+  let resolveSlow;
+  context.fetch=async(path,options)=>{
+    if(path.startsWith('/api/v1/usage-summary')){
+      calls.push({path,options});
+      if(path.includes('slow'))return new Promise(resolve=>{resolveSlow=()=>resolve({ok:true,json:async()=>empty});});
+      return {ok:true,json:async()=>empty};
+    }
+    return originalFetch(path,options);
+  };
+  context.location.hash='#/usage?tag=work';await context.init();
+  assert.equal(node('#dashboard-view').hidden,false);
+  assert.match(node('#dashboard-content').innerHTML,/Summary ready/);
+  assert.equal(node('#dashboard-end').value,'2026-09-07');
+  assert.equal(node('#dashboard-tags').value,'work');
+  assert.match(node('#dashboard-metadata-chips').innerHTML,/\/flag = true/);
+  assert.ok(calls.every(({path})=>!path.startsWith('/api/v1/sessions?')));
+  node('#dashboard-search').value='changed';await context.submitDashboard();
+  assert.match(context.location.hash,/q=changed/);
+  assert.match(context.location.hash,/tag=work/);
+  context.location.hash='#/usage?q=slow';const pending=context.loadDashboard();
+  context.location.hash='';await context.route();resolveSlow();await pending;
+  assert.equal(node('#dashboard-view').hidden,true);
+  assert.doesNotMatch(node('#dashboard-content').innerHTML,/Summary ready/);
+});
+test('dashboard request failure is visible and leaves controls available for retry',async()=>{
+  const {context,node}=setup(['token_usage']);await context.init();
+  context.location.hash='#/usage';context.fetch=async()=>{throw Error('Storage unavailable');};
+  await context.route();assert.match(node('#dashboard-content').innerHTML,/Could not load usage/);
+  assert.match(node('#dashboard-content').innerHTML,/Storage unavailable/);
+  assert.equal(node('#dashboard-filter-fields').disabled,false);
 });

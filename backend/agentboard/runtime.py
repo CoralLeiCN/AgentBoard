@@ -101,7 +101,7 @@ class Runtime:
         if name == "token_usage":
             from .pricing import catalog
 
-            return s.UsageServices(store.usage, catalog, self.enabled("export"))
+            return s.UsageServices(store.dashboard, store.usage, catalog, self.enabled("export"))
         if name == "export":
             return s.ExportServices(store.get_session, store.export)
         if name == "raw_archive":

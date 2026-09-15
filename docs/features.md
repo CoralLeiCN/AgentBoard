@@ -4,7 +4,7 @@ Implemented 2026-09-08. AgentBoard always serves its dashboard and core session 
 
 ## Feature list
 
-Mandatory core owns configuration, storage/migrations, complete capture, normalization correctness, session/event browsing and search, source selection, normalized inspection, basic timing statistics, health, lifecycle and the bundled UI. `features = []` browses an existing dataset without starting unconfigured collection.
+Mandatory core owns configuration, storage/migrations, complete capture, normalization correctness, session/event browsing and search, persistent session tags, source selection, normalized inspection, basic timing statistics, health, lifecycle and the bundled UI. `features = []` browses an existing dataset without starting unconfigured collection.
 
 | Feature ID | Capability | Default | Requires |
 | --- | --- | --- | --- |
@@ -15,7 +15,7 @@ Mandatory core owns configuration, storage/migrations, complete capture, normali
 | `field_lineage` | Calculate, persist and inspect Codex field mappings | On | — |
 | `unified_timeline` | Correlate rollout events with measured item timings | On | — |
 | `parallel_groups` | Derive and display overlapping tool groups | On | — |
-| `token_usage` | Calculate recorded usage and estimated Standard API value from core archives | On | — |
+| `token_usage` | Per-session usage and [workspace dashboard](usage-dashboard.md), with estimated Standard API value | On | — |
 | `inputs` | Dedicated human-attributed input view and query API | On | — |
 | `export` | Download normalized events and supported combined exports | On | — |
 | `classification` | Model classification, external label submission and related controls | Off | — |

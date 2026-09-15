@@ -42,6 +42,12 @@ class Session(BaseModel):
     field_lineage: dict = Field(default_factory=dict, exclude=True)
 
 
+class SessionTagsUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tags: list[Annotated[str, Field(strict=True, max_length=80)]] = Field(max_length=50)
+
+
 class SessionProducerUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

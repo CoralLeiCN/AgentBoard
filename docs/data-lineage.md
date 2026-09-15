@@ -1,6 +1,6 @@
 # Data lineage and transformation rules
 
-Producer identity updated **2026-09-11**. Canonical storage schema: **v10**. API: **`/api/v1`**.
+Producer identity updated **2026-09-11**. Canonical storage schema: **v11** (persistent session tags, 2026-09-15). API: **`/api/v1`**.
 
 Input attribution, wait semantics, and their regression evidence updated **2026-09-07**.
 
@@ -490,6 +490,8 @@ Reads are not frozen snapshots. Pages and queries can observe different writes; 
 
 ### 7.1 Token usage and API value
 
+The [workspace dashboard](usage-dashboard.md#calculation-and-evidence) applies these rules across latest session archives, with UTC periods, metadata/tag filters and explicit coverage. That guide owns the aggregation semantics.
+
 Implemented **2026-09-07**, analysis version `codex-usage-v3`. [`usage.py`](../backend/agentboard/usage.py) reads one raw archive in physical line order. The default is the highest archive ID; `import_id` pins a version. Archive identity/hash, analysis version and the full dated price catalog accompany the report. No stored events, schema or Codex normalization mapping change. Existing archives work without reimport; unarchived sessions require explicit reimport. Normalized timeline filters and OTel records do not affect this report.
 
 | Evidence | Transformation and limits |
@@ -502,7 +504,9 @@ Implemented **2026-09-07**, analysis version `codex-usage-v3`. [`usage.py`](../b
 | Model identity | Request `payload.model`, otherwise chronological `session_meta`/`turn_context.payload.model`. Never use the session table's last model to price earlier activity. `model_override` explicitly prices every row as a selected catalog model while preserving the recorded identity. |
 | USD calculation | `(ordinary input × input rate + cached input × cached rate + cache writes × write rate + output × output rate) / 1,000,000`. Ordinary input subtracts both cache subsets. Decimal USD strings retain precision; reasoning is not charged again. Token totals and costs are Calculated from recorded counts and selected rates. |
 
-[`pricing.py`](../backend/agentboard/pricing.py) contains exact supported model identifiers and the documented `gpt-5.6` alias. Prices were verified against [OpenAI Standard pricing](https://developers.openai.com/api/docs/pricing) on **2026-09-07**, including [cache-write billing](https://developers.openai.com/api/docs/guides/prompt-caching). Rates are current-snapshot equivalents, not historical invoice reconstruction; updating them requires a reviewed code/catalog-version change. No fuzzy model matching or automatic network refresh occurs.
+[`data/model-pricing.toml`](../backend/agentboard/data/model-pricing.toml) contains exact supported model identifiers, named decimal-string rates, long-context rules and explicit aliases. [`pricing.py`](../backend/agentboard/pricing.py) validates the card and calculates costs. [Format and update workflow](../backend/agentboard/data/README.md). Prices were verified against [OpenAI Standard pricing](https://developers.openai.com/api/docs/pricing) on **2026-09-07**, including [cache-write billing](https://developers.openai.com/api/docs/guides/prompt-caching). Rates are current-snapshot equivalents, not historical invoice reconstruction; updating them requires a reviewed TOML/catalog-version change and process restart. The TOML conversion (card schema v2) on 2026-09-16 preserves the existing rates, verification date and public API. No fuzzy model matching or automatic network refresh occurs.
+
+**Local valuation policy, 2026-09-16:** the `codex-auto-review` alias uses all `gpt-5.6-luna` rates and context rules by user instruction. This changes its estimated cost without changing recorded model attribution or model-filter matching. The card version is `openai-standard-2026-09-07-review-luna-v1`; the published-rate verification date is unchanged. The earlier `gpt-5.6` → `gpt-5.6-sol` alias remains in place.
 
 For supported long-context models, **more than 272,000 input tokens** uses 2× input/cache/write rates and 1.5× output rates. GPT-5.6 and GPT-6 Astra apply this per request; GPT-5.4/5.5 families apply it across that model's session rows, following their model documentation. Unknown request boundaries leave tier-dependent costs unavailable. Missing cache counts block prices that depend on them; absent cache-write counts do not block models with no write premium. An unpublished cached-input rate with positive cached tokens remains unpriced.
 
