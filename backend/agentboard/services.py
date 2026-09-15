@@ -17,6 +17,7 @@ class UnifiedServices:
 
 @dataclass(frozen=True)
 class UsageServices:
+    dashboard: Callable
     usage: Callable
     pricing: Callable
     export_enabled: bool

@@ -221,8 +221,9 @@ def analyze(lines, model_override=""):
         row["breakdown"] = breakdown(row["tokens"])
     long_models = {
         row["pricing_model"] for row in rows
-        if row["request_known"] and row["tokens"]["input_tokens"] > 272000
+        if row["request_known"]
         and pricing["models"].get(row["pricing_model"], {}).get("long_context_scope") == "session"
+        and row["tokens"]["input_tokens"] > pricing["models"][row["pricing_model"]]["long_context_threshold"]
     }
     # A multi-request delta cannot establish the session-wide context tier.
     uncertain_models = {

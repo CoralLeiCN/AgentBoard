@@ -2,12 +2,13 @@
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AgentBoard · Trace explorer</title>
 <script>if(location.protocol==='file:')location.replace('http://localhost:4319/'+location.hash);</script>
-<link rel="stylesheet" href="/static/style.css?v=feature-modules-v1"></head>
+<link rel="stylesheet" href="/static/style.css?v=usage-dashboard-v1"></head>
 <body>
 <aside class="sidebar">
   <a class="brand" href="/"><span class="brand-icon">▥</span> AgentBoard <span class="version">α</span></a>
   <div class="workspace"><span class="workspace-icon">L</span><div>Local workspace<small>TRACE EXPLORER</small></div><span class="online" title="API connection status"></span></div>
   <div class="nav-label">WORKSPACE</div><button id="home" class="nav active"><span>▤</span> Sessions <span class="nav-count" id="nav-count">—</span></button>
+  <a id="dashboard-nav" class="nav" href="#/usage" data-feature="token_usage" hidden><span>▥</span> Usage dashboard</a>
   <a class="nav" href="/docs" target="_blank" rel="noopener"><span>⌘</span> API reference <span class="external">↗</span></a>
   <div class="sidebar-bottom"><div class="small-label">YOUR TRACES, YOUR MACHINE</div><p>Understand what your agent<br>does between prompts.</p><button id="token" class="text-button">API connection settings ↗</button><div class="local-status"><span class="online"></span> Local storage · SQLite</div></div>
 </aside>
@@ -26,8 +27,28 @@
     <div class="table-footer"><span id="page-info">Loading sessions…</span><div><button id="prev" class="button small">← Previous</button><button id="next" class="button small">Next →</button></div></div></div>
     <div class="hint"><span>↳</span><div id="ingestion-hint"><strong>No changes to your agent.</strong> Import existing sessions, or point Codex’s asynchronous OTel exporter at this service.</div><code id="endpoint-hint"></code></div>
   </section>
+  <section id="dashboard-view" class="page" hidden aria-labelledby="dashboard-title">
+    <div class="page-heading"><div><div class="eyebrow">WORKSPACE USAGE</div><h1 id="dashboard-title">Usage dashboard</h1><p>Tokens and estimated API value across your sessions.</p></div><button id="dashboard-refresh" class="button">↻ Refresh</button></div>
+    <form id="dashboard-filters" class="panel dashboard-filters"><fieldset id="dashboard-filter-fields">
+      <div class="dashboard-filter-grid">
+        <label>Period<select id="dashboard-period"><option value="all">All time</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="custom">Custom dates</option></select></label>
+        <label>From (UTC)<input id="dashboard-start" type="date"></label><label>Through (UTC)<input id="dashboard-end" type="date"></label>
+        <label>Search sessions<input id="dashboard-search" type="search" placeholder="Title or session ID"></label>
+        <label>Agent<select id="dashboard-agent"><option value="">All agents</option></select></label>
+        <label>Producer<select id="dashboard-producer"><option value="">All producers</option><option value="agentboard">AgentBoard-generated</option><option value="unmarked">Unmarked</option></select></label>
+        <label>Recorded model<select id="dashboard-model"><option value="">All models</option></select></label>
+        <label>Tags (match all)<input id="dashboard-tags" list="dashboard-tag-options" placeholder="work, review"><datalist id="dashboard-tag-options"></datalist></label>
+      </div>
+      <div class="dashboard-metadata-row"><label>Metadata field<select id="dashboard-metadata-key"><option value="">Choose a field</option></select></label><label>Exact value<select id="dashboard-metadata-value"><option value="">Choose a value</option></select></label><button id="dashboard-add-metadata" type="button" class="button">Add filter</button></div>
+      <div id="dashboard-metadata-chips" class="dashboard-chips" aria-label="Active metadata filters"></div>
+      <div class="actions"><button id="dashboard-reset" type="button" class="button">Reset</button><button type="submit" class="button primary">Apply filters</button></div>
+    </fieldset></form>
+    <div id="dashboard-content" aria-live="polite"></div>
+    <div id="dashboard-pagination" class="table-footer" hidden><span id="dashboard-page-info"></span><div><button id="dashboard-prev" class="button small">← Previous</button><button id="dashboard-next" class="button small">Next →</button></div></div>
+  </section>
   <section id="detail-view" class="page" hidden>
     <button id="back" class="text-button">← All sessions</button><div class="page-heading detail-heading"><div><div class="eyebrow" id="session-agent">CODEX SESSION</div><h1 id="session-title"></h1><p class="mono" id="session-id"></p></div><div class="actions"><button id="classify" data-feature="classification" hidden class="button">✧ Classify purpose</button><button id="export-raw" class="button" hidden>↓ Export raw trace</button><button id="export" data-feature="export" hidden class="button">↓ Export JSONL</button></div></div>
+    <form id="session-tags-form" class="session-tags-form"><label for="session-tags">Session tags</label><input id="session-tags" placeholder="work, review" aria-describedby="session-tags-help"><button id="session-tags-save" class="button small" type="submit">Save tags</button><span id="session-tags-help">Comma-separated · saved locally</span></form>
     <p id="detail-identity-note" class="timing-note" hidden></p><p id="producer-note" class="timing-note" hidden></p><div id="classification" class="classification" hidden></div>
     <div id="session-metrics" class="metrics"><div><span class="small-label" id="elapsed-label">SESSION ELAPSED</span><strong id="elapsed">—</strong><small id="elapsed-note">Includes gaps between turns</small></div><div><span class="small-label"><i class="dot llm"></i> LLM TIME</span><strong id="llm-time">—</strong><small id="llm-quality"></small></div><div><span class="small-label"><i class="dot tool"></i> TOOL TIME</span><strong id="tool-time">—</strong><small id="tool-quality"></small></div><div><span class="small-label"><i class="dot user_wait"></i> WAITING FOR USER</span><strong id="user_wait-time">—</strong><small id="user_wait-quality"></small></div><div data-feature="inputs" hidden><span class="small-label">USER INPUTS</span><strong id="input-count">0</strong><small id="input-quality">Human authorship inferred</small></div></div>
     <div class="timing-note" id="timing-note"></div>
@@ -55,5 +76,5 @@
 </dialog>
 <dialog id="branch-dialog"><div class="dialog-heading"><div><div class="eyebrow">EXPLORE ANOTHER DIRECTION</div><h2>Branch from this input</h2></div><button class="icon-button close" aria-label="Close dialog">×</button></div><p>Keep the preceding conversation and replace this prompt. Your original session stays intact.</p><label for="replacement">Replacement input</label><textarea id="replacement" rows="6"></textarea><p id="branch-note" class="muted">Model replay continues the transcript with the configured model. Native Codex branching produces a plan to run locally. Neither restores earlier files.</p><div class="actions"><button id="native-plan" data-feature="native_resume" hidden class="button">Get Codex plan</button><button id="replay" data-feature="replay" hidden class="button primary">Run model replay →</button></div></dialog>
 <dialog id="token-dialog"><div class="dialog-heading"><h2>API connection</h2><button class="icon-button close" aria-label="Close dialog">×</button></div><p>If you configured a server token, enter it here. It stays in this tab’s session storage.</p><label for="api-token">Bearer token</label><input type="password" id="api-token" autocomplete="off"><button id="save-token" class="button primary">Connect</button></dialog>
-<script src="/static/provenance.js?v=feature-modules-v1" defer></script><script src="/static/lineage.js?v=field-lineage-v2" defer></script><script src="/static/usage.js?v=token-usage-v3" defer></script><script src="/static/app.js?v=core-capture-v1" defer></script>
+<script src="/static/provenance.js?v=feature-modules-v1" defer></script><script src="/static/lineage.js?v=field-lineage-v2" defer></script><script src="/static/usage.js?v=token-usage-v3" defer></script><script src="/static/dashboard.js?v=usage-dashboard-v1" defer></script><script src="/static/app.js?v=usage-dashboard-v1" defer></script>
 </body></html>

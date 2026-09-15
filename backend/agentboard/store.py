@@ -73,7 +73,11 @@ CREATE TABLE IF NOT EXISTS rollout_line_fingerprints (
 );
 CREATE INDEX IF NOT EXISTS sessions_identity ON sessions(identity_kind,started_at DESC,id);
 """ + CAPTURE_SCHEMA + """
-PRAGMA user_version = 10;
+CREATE TABLE IF NOT EXISTS session_tags (
+ session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+ tag TEXT NOT NULL, PRIMARY KEY(session_id, tag)
+);
+PRAGMA user_version = 11;
 """
 
 
@@ -107,7 +111,7 @@ class Store:
             # Do not use executescript: it commits before running, breaking atomic migration.
             db.execute("BEGIN IMMEDIATE")
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in range(11):
+            if version not in range(12):
                 raise ValueError("Unsupported database schema version")
             if version == 1:
                 self._migrate_timestamps(db)
@@ -528,7 +532,8 @@ class Store:
                     and set(json.loads(row["metadata"])) <= {"service.name"}):
                 db.execute("""DELETE FROM sessions WHERE id=?
                     AND NOT EXISTS(SELECT 1 FROM events WHERE session_id=?)
-                    AND NOT EXISTS(SELECT 1 FROM raw_imports WHERE session_id=?)""", (sid, sid, sid))
+                    AND NOT EXISTS(SELECT 1 FROM raw_imports WHERE session_id=?)
+                    AND NOT EXISTS(SELECT 1 FROM session_tags WHERE session_id=?)""", (sid, sid, sid, sid))
 
     @classmethod
     def _reconcile_otlp(cls, db, traces):
@@ -704,7 +709,50 @@ class Store:
 
     def get_session(self, sid):
         with self.connect() as db:
-            return self.session_row(db.execute("SELECT * FROM sessions WHERE id=?", (sid,)).fetchone())
+            session = self.session_row(db.execute("SELECT * FROM sessions WHERE id=?", (sid,)).fetchone())
+            session["tags"] = [r[0] for r in db.execute(
+                "SELECT tag FROM session_tags WHERE session_id=? ORDER BY tag", (sid,))]
+            return session
+
+    def set_tags(self, sid, tags):
+        tags = sorted(set(tag.strip() for tag in tags))
+        if len(tags) > 50 or any(not tag or len(tag) > 80 or "," in tag for tag in tags):
+            raise ValueError("Use up to 50 nonempty tags, each at most 80 characters and without commas")
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            self.session_row(db.execute("SELECT * FROM sessions WHERE id=?", (sid,)).fetchone())
+            db.execute("DELETE FROM session_tags WHERE session_id=?", (sid,))
+            db.executemany("INSERT INTO session_tags VALUES(?,?)", ((sid, tag) for tag in tags))
+        return {"tags": tags}
+
+    def dashboard(self, **filters):
+        from .dashboard import build_report
+        from .usage import analyze
+
+        # One SQLite read snapshot: imports or tag edits cannot mix report generations.
+        with self.connect() as db:
+            db.execute("BEGIN")
+            sessions = [self.session_row(r) for r in db.execute(
+                "SELECT * FROM sessions WHERE identity_kind='session' ORDER BY started_at DESC,id")]
+            tags = {}
+            for sid, tag in db.execute("SELECT session_id,tag FROM session_tags ORDER BY tag"):
+                tags.setdefault(sid, []).append(tag)
+            for session in sessions:
+                session["tags"] = tags.get(session["id"], [])
+
+            def usage(sid):
+                archive = db.execute("SELECT id FROM raw_imports WHERE session_id=? ORDER BY id DESC LIMIT 1",
+                                     (sid,)).fetchone()
+                lines = db.execute("SELECT content FROM raw_lines WHERE import_id=? ORDER BY sequence",
+                                   (archive[0],)) if archive else []
+                return analyze((r[0] for r in lines))
+
+            def active(sid, start, end):
+                return db.execute("""SELECT 1 FROM events WHERE session_id=?
+                    AND (? IS NULL OR start_time>=?) AND (? IS NULL OR start_time<?) LIMIT 1""",
+                    (sid, start, start, end, end)).fetchone() is not None
+
+            return build_report(sessions, usage, active, **filters)
 
     def set_producer(self, sid, producer):
         if producer not in (None, "agentboard"):

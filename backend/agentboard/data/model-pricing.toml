@@ -1,0 +1,257 @@
+# Standard API token prices. See README.md for validation and update instructions.
+# Quote decimal rates to preserve precision; "0" is a known zero price.
+# cached_input = "unavailable" means no published cached-input rate.
+# cache_write = "input_rate" means writes use the ordinary input rate.
+# long_context = false means no separate long-context tier.
+schema_version = 2
+version = "openai-standard-2026-09-07-review-luna-v1"
+verified_at = 2026-09-07
+source_url = "https://developers.openai.com/api/docs/pricing"
+currency = "USD"
+service_tier = "standard"
+unit = "USD per 1M tokens"
+
+[aliases]
+"gpt-5.6" = "gpt-5.6-sol"
+# User-configured valuation (2026-09-16), including Luna's context and cache rules.
+"codex-auto-review" = "gpt-5.6-luna"
+
+[models."gpt-6-astra"]
+input = "10"
+cached_input = "1"
+cache_write = "12.5"
+output = "50"
+
+[models."gpt-6-astra".long_context]
+scope = "request"
+threshold_input_tokens = 272000
+input_multiplier = "2"
+output_multiplier = "1.5"
+
+[models."gpt-5.6-sol"]
+input = "4"
+cached_input = "0.4"
+cache_write = "5"
+output = "20"
+
+[models."gpt-5.6-sol".long_context]
+scope = "request"
+threshold_input_tokens = 272000
+input_multiplier = "2"
+output_multiplier = "1.5"
+
+[models."gpt-5.6-terra"]
+input = "2"
+cached_input = "0.2"
+cache_write = "2.5"
+output = "12"
+
+[models."gpt-5.6-terra".long_context]
+scope = "request"
+threshold_input_tokens = 272000
+input_multiplier = "2"
+output_multiplier = "1.5"
+
+[models."gpt-5.6-luna"]
+input = "0.2"
+cached_input = "0.02"
+cache_write = "0.25"
+output = "1.2"
+
+[models."gpt-5.6-luna".long_context]
+scope = "request"
+threshold_input_tokens = 272000
+input_multiplier = "2"
+output_multiplier = "1.5"
+
+[models."gpt-5.5"]
+input = "5"
+cached_input = "0.5"
+cache_write = "input_rate"
+output = "30"
+
+[models."gpt-5.5".long_context]
+scope = "session"
+threshold_input_tokens = 272000
+input_multiplier = "2"
+output_multiplier = "1.5"
+
+[models."gpt-5.5-pro"]
+input = "30"
+cached_input = "unavailable"
+cache_write = "input_rate"
+output = "180"
+
+[models."gpt-5.5-pro".long_context]
+scope = "session"
+threshold_input_tokens = 272000
+input_multiplier = "2"
+output_multiplier = "1.5"
+
+[models."gpt-5.4"]
+input = "2.5"
+cached_input = "0.25"
+cache_write = "input_rate"
+output = "15"
+
+[models."gpt-5.4".long_context]
+scope = "session"
+threshold_input_tokens = 272000
+input_multiplier = "2"
+output_multiplier = "1.5"
+
+[models."gpt-5.4-pro"]
+input = "30"
+cached_input = "unavailable"
+cache_write = "input_rate"
+output = "180"
+
+[models."gpt-5.4-pro".long_context]
+scope = "session"
+threshold_input_tokens = 272000
+input_multiplier = "2"
+output_multiplier = "1.5"
+
+[models."gpt-5.4-mini"]
+input = "0.75"
+cached_input = "0.075"
+cache_write = "input_rate"
+output = "4.5"
+long_context = false
+
+[models."gpt-5.4-nano"]
+input = "0.2"
+cached_input = "0.02"
+cache_write = "input_rate"
+output = "1.25"
+long_context = false
+
+[models."gpt-5.3-codex"]
+input = "1.75"
+cached_input = "0.175"
+cache_write = "input_rate"
+output = "14"
+long_context = false
+
+[models."gpt-5.2-codex"]
+input = "1.75"
+cached_input = "0.175"
+cache_write = "input_rate"
+output = "14"
+source_url = "https://developers.openai.com/api/docs/models/gpt-5.2-codex"
+long_context = false
+
+[models."gpt-5.1-codex"]
+input = "1.25"
+cached_input = "0.125"
+cache_write = "input_rate"
+output = "10"
+source_url = "https://developers.openai.com/api/docs/models/gpt-5.1-codex"
+long_context = false
+
+[models."gpt-5.1-codex-max"]
+input = "1.25"
+cached_input = "0.125"
+cache_write = "input_rate"
+output = "10"
+source_url = "https://developers.openai.com/api/docs/models/gpt-5.1-codex-max"
+long_context = false
+
+[models."gpt-5.1-codex-mini"]
+input = "0.25"
+cached_input = "0.025"
+cache_write = "input_rate"
+output = "2"
+source_url = "https://developers.openai.com/api/docs/models/gpt-5.1-codex-mini"
+long_context = false
+
+[models."gpt-5.2"]
+input = "1.75"
+cached_input = "0.175"
+cache_write = "input_rate"
+output = "14"
+long_context = false
+
+[models."gpt-5.2-pro"]
+input = "21"
+cached_input = "unavailable"
+cache_write = "input_rate"
+output = "168"
+long_context = false
+
+[models."gpt-5.1"]
+input = "1.25"
+cached_input = "0.125"
+cache_write = "input_rate"
+output = "10"
+long_context = false
+
+[models."gpt-5"]
+input = "1.25"
+cached_input = "0.125"
+cache_write = "input_rate"
+output = "10"
+long_context = false
+
+[models."gpt-5-mini"]
+input = "0.25"
+cached_input = "0.025"
+cache_write = "input_rate"
+output = "2"
+long_context = false
+
+[models."gpt-5-nano"]
+input = "0.05"
+cached_input = "0.005"
+cache_write = "input_rate"
+output = "0.4"
+long_context = false
+
+[models."gpt-4.1"]
+input = "2"
+cached_input = "0.5"
+cache_write = "input_rate"
+output = "8"
+long_context = false
+
+[models."gpt-4.1-mini"]
+input = "0.4"
+cached_input = "0.1"
+cache_write = "input_rate"
+output = "1.6"
+long_context = false
+
+[models."gpt-4.1-nano"]
+input = "0.1"
+cached_input = "0.025"
+cache_write = "input_rate"
+output = "0.4"
+long_context = false
+
+[models."gpt-4o"]
+input = "2.5"
+cached_input = "1.25"
+cache_write = "input_rate"
+output = "10"
+long_context = false
+
+[models."gpt-4o-mini"]
+input = "0.15"
+cached_input = "0.075"
+cache_write = "input_rate"
+output = "0.6"
+long_context = false
+
+[models."o3"]
+input = "2"
+cached_input = "0.5"
+cache_write = "input_rate"
+output = "8"
+long_context = false
+
+[models."o4-mini"]
+input = "1.1"
+cached_input = "0.275"
+cache_write = "input_rate"
+output = "4.4"
+long_context = false

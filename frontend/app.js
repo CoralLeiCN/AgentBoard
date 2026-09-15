@@ -101,12 +101,13 @@ async function classifyPage() {
 }
 async function openSession(sid) {
   ++usageRequest;usageReport=null;$('#usage-model').value='';$('#usage-export').disabled=true;$('#usage-pagination').hidden=true;$('#usage-content').innerHTML='<p class="usage-empty">Loading token usage…</p>';
+  $('#dashboard-view').hidden=true;$('#session-tags-save').disabled=true;$('#session-tags').disabled=true;
   const request=++state.request; state.sid=sid;state.events=[];state.cursor=null;state.parallelGroups=[];state.parallelByEvent=new Map();$('#parallel-summary').hidden=true;
   $('#list-view').hidden=true;$('#detail-view').hidden=false;$('#event-list').innerHTML='<div class="loading">Loading trace…</div>';
   const [s,stats,archives]=await Promise.all([json(`/api/v1/sessions/${encodeURIComponent(sid)}`),json(`/api/v1/sessions/${encodeURIComponent(sid)}/stats`),hasFeature('raw_archive','export')?json(`/api/v1/sessions/${encodeURIComponent(sid)}/raw-imports`):{items:[]}]);
   if(request!==state.request)return;
   $('#export-raw').hidden=!archives.items.length;
-  const unidentified=s.identity_kind!=='session'; $('#elapsed-label').textContent=unidentified?'RECORDED TIME RANGE':'SESSION ELAPSED'; $('#elapsed-note').textContent=unidentified?'First start to last recorded end':'Includes gaps between turns'; $('#back').textContent=state.listKind==='unattributed'?'← Unattributed telemetry':'← All sessions'; state.session=s;$('#session-title').textContent=unidentified&&s.title==='Untitled session'?'Unattributed telemetry':s.title;$('#session-id').textContent=s.id;$('#session-agent').textContent=`${s.agent.toUpperCase()} ${unidentified?'· UNATTRIBUTED TELEMETRY':'SESSION'}${s.metadata.dummy?' · DUMMY MODEL':''}${s.metadata.agentboard_fixture?.partial_session?' · REDACTED SESSION SLICE':''}`;
+  const unidentified=s.identity_kind!=='session'; $('#elapsed-label').textContent=unidentified?'RECORDED TIME RANGE':'SESSION ELAPSED'; $('#elapsed-note').textContent=unidentified?'First start to last recorded end':'Includes gaps between turns'; $('#back').textContent=state.listKind==='unattributed'?'← Unattributed telemetry':'← All sessions'; state.session=s;$('#session-tags-save').disabled=false;$('#session-tags').disabled=false;$('#session-tags').value=(s.tags||[]).join(', ');$('#session-title').textContent=unidentified&&s.title==='Untitled session'?'Unattributed telemetry':s.title;$('#session-id').textContent=s.id;$('#session-agent').textContent=`${s.agent.toUpperCase()} ${unidentified?'· UNATTRIBUTED TELEMETRY':'SESSION'}${s.metadata.dummy?' · DUMMY MODEL':''}${s.metadata.agentboard_fixture?.partial_session?' · REDACTED SESSION SLICE':''}`;
   $('#breadcrumbs').textContent=unidentified?'Workspace / Unattributed telemetry / Trace':'Workspace / Sessions / Trace'; $('#detail-identity-note').hidden=!unidentified; $('#detail-identity-note').textContent='This group has no unambiguous conversation identity. It preserves unattributed telemetry and is not counted as a Codex session.';renderClassification(s);
   if(s.input_origin?.origin==='internal') {
     const parent=s.input_origin.parent_session_id;
@@ -316,7 +317,12 @@ function renderEvents() {
   document.querySelectorAll('[data-event]').forEach(el=>{const open=()=>inspectEvent(state.events.find(e=>e.id===el.dataset.event));el.onclick=open;el.onkeydown=e=>{if(e.key==='Enter')open();};});
   document.querySelectorAll('[data-branch]').forEach(el=>el.onclick=()=>{state.input=el.dataset.branch;$('#replacement').value=state.events.find(e=>e.id===state.input).text;$('#native-plan').hidden=!hasFeature('native_resume')||state.session.agent!=='codex';$('#replay').hidden=!hasFeature('replay');$('#branch-note').textContent=[hasFeature('replay')?'Model replay continues the transcript with the configured model.':'',hasFeature('native_resume')&&state.session.agent==='codex'?'Native Codex branching produces a plan to run locally.':''].filter(Boolean).join(' ')+' Earlier files are not restored.';$('#branch-dialog').showModal();});
 }
-async function route() { const sid=decodeURIComponent(location.hash.slice(1));if(sid){await openSession(sid);}else{state.request++;state.sid=null;$('#list-view').hidden=false;$('#detail-view').hidden=true;$('#breadcrumbs').textContent='Workspace / Sessions';await loadSessions();} }
+async function route() {
+  const dashboard=location.hash==='#/usage'||location.hash.startsWith('#/usage?');
+  $('#dashboard-nav').classList.toggle('active',dashboard);$('#home').classList.toggle('active',!dashboard);
+  if(dashboard&&hasFeature('token_usage')){state.request++;state.listRequest++;state.sid=null;$('#list-view').hidden=true;$('#detail-view').hidden=true;$('#dashboard-view').hidden=false;$('#breadcrumbs').textContent='Workspace / Usage dashboard';await loadDashboard();return;}
+  ++dashboardRequest;$('#dashboard-view').hidden=true;
+  const sid=dashboard?'':decodeURIComponent(location.hash.slice(1));if(sid){await openSession(sid);}else{state.request++;state.sid=null;$('#list-view').hidden=false;$('#detail-view').hidden=true;$('#breadcrumbs').textContent='Workspace / Sessions';await loadSessions();} }
 $('#back').onclick=()=>{location.hash='';};
 $('#home').onclick=run(async()=>{state.listKind='session';state.offset=0;document.querySelectorAll('[data-list-kind]').forEach(b=>b.classList.toggle('active',b.dataset.listKind==='session'));if(location.hash)location.hash='';else await loadSessions();});
 document.querySelectorAll('[data-event-view]').forEach(button=>button.onclick=()=>setEventView(button.dataset.eventView,true));
@@ -368,3 +374,88 @@ $('#usage-export').onclick=run(()=>busy($('#usage-export'),async()=>{
   const response=await api(`/api/v1/sessions/${encodeURIComponent(state.sid)}/usage/export?${params}`);
   download(await response.text(),'agentboard-usage.json','application/json');
 }));
+
+let dashboardRequest=0,dashboardReport=null,dashboardMetadata={};
+function dashboardOptions(selector,values,label,selected='') {
+  $(selector).innerHTML=`<option value="">${esc(label)}</option>`+values.map(value=>`<option value="${esc(value)}">${esc(value)}</option>`).join('');
+  if(selected&&!values.includes(selected))$(selector).innerHTML+=`<option value="${esc(selected)}">${esc(selected)}</option>`;
+  $(selector).value=selected;
+}
+function renderDashboardMetadata() {
+  $('#dashboard-metadata-chips').innerHTML=Object.entries(dashboardMetadata).map(([key,value])=>`<button type="button" class="button small" data-metadata-remove="${esc(key)}" aria-label="Remove metadata filter ${esc(key)}">${esc(key)} = ${esc(JSON.stringify(value))} ×</button>`).join('');
+  document.querySelectorAll('[data-metadata-remove]').forEach(button=>button.onclick=()=>{delete dashboardMetadata[button.dataset.metadataRemove];renderDashboardMetadata();});
+}
+async function loadDashboard() {
+  if(!hasFeature('token_usage'))return;
+  const request=++dashboardRequest;$('#dashboard-filter-fields').disabled=true;
+  const params=new URLSearchParams(location.hash.split('?')[1]||'');
+  $('#dashboard-content').innerHTML='<p class="loading">Calculating usage across matching sessions…</p>';
+  $('#dashboard-pagination').hidden=true;
+  try {
+    const data=await json(`/api/v1/usage-summary?${params}`);
+    if(request!==dashboardRequest||$('#dashboard-view').hidden)return;
+    dashboardReport=data;dashboardMetadata=data.filters.metadata;
+    $('#dashboard-start').value=data.filters.start?.slice(0,10)||'';
+    const end=data.filters.end?new Date(data.filters.end):null;
+    if(end)end.setUTCDate(end.getUTCDate()-1);
+    $('#dashboard-end').value=end?end.toISOString().slice(0,10):'';
+    $('#dashboard-period').value=data.filters.start||data.filters.end?'custom':'all';
+    $('#dashboard-search').value=data.filters.q;$('#dashboard-producer').value=data.filters.producer;
+    $('#dashboard-tags').value=data.filters.tags.join(', ');
+    dashboardOptions('#dashboard-agent',data.facets.agents,'All agents',data.filters.agent);
+    dashboardOptions('#dashboard-model',data.facets.models,'All models',data.filters.model);
+    dashboardOptions('#dashboard-metadata-key',Object.keys(data.facets.metadata),'Choose a field');
+    dashboardOptions('#dashboard-metadata-value',[],'Choose a value');
+    $('#dashboard-tag-options').innerHTML=data.facets.tags.map(tag=>`<option value="${esc(tag)}"></option>`).join('');
+    renderDashboardMetadata();
+    $('#dashboard-content').innerHTML=dashboardHTML(data);
+    const offset=Number(params.get('offset')||0);
+    $('#dashboard-pagination').hidden=!data.summary.sessions;
+    $('#dashboard-page-info').textContent=`${data.items.length?offset+1:0}–${offset+data.items.length} of ${data.summary.sessions} sessions`;
+    $('#dashboard-prev').disabled=offset===0;$('#dashboard-next').disabled=data.next_offset===null;
+  } catch(error) {
+    if(request!==dashboardRequest)return;
+    $('#dashboard-content').innerHTML=`<div class="panel empty"><h2>Could not load usage</h2><p>${esc(error.message)}</p><p>Adjust the filters or refresh to try again.</p></div>`;
+  } finally {
+    if(request===dashboardRequest)$('#dashboard-filter-fields').disabled=false;
+  }
+}
+function submitDashboard() {
+  const params=dashboardParams({start:$('#dashboard-start').value,end:$('#dashboard-end').value,
+    q:$('#dashboard-search').value,agent:$('#dashboard-agent').value,producer:$('#dashboard-producer').value,
+    model:$('#dashboard-model').value,tags:$('#dashboard-tags').value,metadata:dashboardMetadata});
+  const hash=`#/usage${params.size?'?'+params:''}`;
+  if(location.hash===hash)return loadDashboard();
+  location.hash=hash;
+}
+$('#dashboard-filters').onsubmit=run(event=>{event.preventDefault();return submitDashboard();});
+$('#dashboard-refresh').onclick=run(()=>loadDashboard());
+$('#dashboard-reset').onclick=run(()=>{if(location.hash==='#/usage')return loadDashboard();location.hash='#/usage';});
+$('#dashboard-period').onchange=()=>{
+  const period=$('#dashboard-period').value;
+  if(period==='custom')return;
+  let start='',end='';
+  if(period!=='all'){const now=new Date();end=now.toISOString().slice(0,10);now.setUTCDate(now.getUTCDate()-Number(period)+1);start=now.toISOString().slice(0,10);}
+  $('#dashboard-start').value=start;$('#dashboard-end').value=end;
+};
+for(const id of ['start','end'])$(`#dashboard-${id}`).onchange=()=>{$('#dashboard-period').value='custom';};
+$('#dashboard-metadata-key').onchange=()=>dashboardOptions('#dashboard-metadata-value',dashboardReport?.facets.metadata[$('#dashboard-metadata-key').value]||[],'Choose a value');
+$('#dashboard-add-metadata').onclick=run(()=>{
+  const key=$('#dashboard-metadata-key').value,value=$('#dashboard-metadata-value').value;
+  if(!key||!value)throw Error('Choose a metadata field and value');
+  dashboardMetadata={...dashboardMetadata,[key]:JSON.parse(value)};renderDashboardMetadata();
+});
+for(const direction of ['prev','next'])$(`#dashboard-${direction}`).onclick=run(()=>{
+  const params=new URLSearchParams(location.hash.split('?')[1]||'');
+  params.set('offset',direction==='next'?dashboardReport.next_offset:Math.max(0,Number(params.get('offset')||0)-20));
+  location.hash=`#/usage?${params}`;
+});
+$('#session-tags-form').onsubmit=run(async event=>{
+  event.preventDefault();
+  const sid=state.sid,tags=$('#session-tags').value.split(',').map(tag=>tag.trim()).filter(Boolean);
+  await busy($('#session-tags-save'),async()=>{
+    const result=await json(`/api/v1/sessions/${encodeURIComponent(sid)}/tags`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({tags})});
+    if(state.sid===sid){state.session.tags=result.tags;$('#session-tags').value=result.tags.join(', ');}
+    notice('Session tags saved');
+  });
+});

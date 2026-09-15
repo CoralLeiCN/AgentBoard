@@ -177,5 +177,5 @@ def test_v9_migration_preserves_data_and_backfills_only_known_producers(tmp_path
     assert upgraded.get_session("replay")["producer"] == "agentboard"
     assert upgraded.classification_candidates(force=True) == ["sdk"]
     with upgraded.connect() as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 10
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 11
         assert not db.execute("PRAGMA foreign_key_check").fetchall()

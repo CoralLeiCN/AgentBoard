@@ -65,7 +65,7 @@ def test_empty_allowlist_browses_existing_data_without_optional_routes_or_gatewa
         assert set(paths) == {
             "/health", "/api/v1/config", "/api/v1/sessions", "/api/v1/sessions/{sid}",
             "/api/v1/sessions/{sid}/events", "/api/v1/sessions/{sid}/stats",
-            "/api/v1/sessions/{sid}/producer",
+            "/api/v1/sessions/{sid}/producer", "/api/v1/sessions/{sid}/tags",
         }
         assert not hasattr(client.app.state, "gateway")
         assert client.get(f"/api/v1/sessions/{sid}/events").json()["items"]

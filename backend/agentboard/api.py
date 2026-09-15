@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .config import Settings
-from .domain import SessionProducerUpdate
+from .domain import SessionProducerUpdate, SessionTagsUpdate
 from .runtime import Runtime
 
 
@@ -108,6 +108,10 @@ def _create_app(settings, runtime):
     def session(sid: str):
         return store.get_session(sid)
 
+    @app.put("/api/v1/sessions/{sid}/tags")
+    def session_tags(sid: str, body: SessionTagsUpdate):
+        return store.set_tags(sid, body.tags)
+
     @app.put("/api/v1/sessions/{sid}/producer")
     def session_producer(sid: str, body: SessionProducerUpdate):
         return store.set_producer(sid, body.producer)
@@ -192,6 +196,7 @@ FEATURE_ROUTES = {'import': [('POST', '/api/v1/import/{agent}')],
  'replay': [('POST', '/api/v1/sessions/{sid}/replay')],
  'native_resume': [('POST', '/api/v1/sessions/{sid}/codex-plan')],
  'token_usage': [('GET', '/api/v1/pricing'),
+                 ('GET', '/api/v1/usage-summary'),
                  ('GET', '/api/v1/sessions/{sid}/usage'),
                  ('GET', '/api/v1/sessions/{sid}/usage/export')]}
 
