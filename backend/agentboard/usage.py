@@ -10,7 +10,7 @@ from decimal import Decimal
 
 from .pricing import catalog, price
 
-VERSION = "codex-usage-v3"
+VERSION = "codex-usage-v4"
 FIELDS = ("input_tokens", "cached_input_tokens", "cache_write_input_tokens",
           "output_tokens", "reasoning_output_tokens", "total_tokens")
 
@@ -99,6 +99,7 @@ def analyze(lines, model_override=""):
     detail_records = 0
     reported_total = 0
     summaries = []
+    legacy_context_inputs = {}
 
     def remember_summary(value, scope, row):
         try:
@@ -194,6 +195,11 @@ def analyze(lines, model_override=""):
             try:
                 last = token_counts(info.get("last_token_usage"))
                 row["request_known"] = all(delta[key] == last[key] for key in ("input_tokens", "output_tokens"))
+                # The latest request has context evidence even when the delta spans several requests.
+                last_model = model_override or row["model"]
+                legacy_context_inputs[last_model] = max(
+                    legacy_context_inputs.get(last_model, 0), last["input_tokens"],
+                )
             except ValueError:
                 row["request_known"] = False
             if not row["request_known"]:
@@ -225,9 +231,18 @@ def analyze(lines, model_override=""):
         and pricing["models"].get(row["pricing_model"], {}).get("long_context_scope") == "session"
         and row["tokens"]["input_tokens"] > pricing["models"][row["pricing_model"]]["long_context_threshold"]
     }
-    # A multi-request delta cannot establish the session-wide context tier.
+    if not detail_records:
+        long_models.update(
+            name for name, size in legacy_context_inputs.items()
+            if pricing["models"].get(name, {}).get("long_context_scope") == "session"
+            and size > pricing["models"][name]["long_context_threshold"]
+        )
+    # Unattributed requests may belong to any session model. A small delta bounds their context size.
+    unknown_context = max((row["tokens"]["input_tokens"] for row in rows if not row["request_known"]), default=0)
     uncertain_models = {
-        row["pricing_model"] for row in rows if not row["request_known"]
+        name for name in {row["pricing_model"] for row in rows}
+        if pricing["models"].get(name, {}).get("long_context_scope") == "session"
+        and unknown_context > pricing["models"][name]["long_context_threshold"]
     }
     running_cost = Decimal(0)
     running_tokens = 0
@@ -235,8 +250,7 @@ def analyze(lines, model_override=""):
     priced_so_far = 0
     for row in rows:
         selected = row["pricing_model"]
-        if (selected in uncertain_models and selected not in long_models
-                and pricing["models"].get(selected, {}).get("long_context_scope") == "session"):
+        if selected in uncertain_models and selected not in long_models:
             row["cost"] = {"usd": None, "reason": "Session context tier unavailable"}
         else:
             row["cost"] = price(row["tokens"], selected, request_known=row["request_known"],
