@@ -1,4 +1,5 @@
 import json
+from unittest.mock import Mock
 
 import httpx
 import pytest
@@ -112,6 +113,56 @@ def test_replay_first_prompt_has_no_previous_context(client, imported):
     assert [e["text"] for e in events if e["kind"] == "user"] == ["New first input"]
     assert result.json()["dummy"] is True
     assert events[-1]["attributes"]["content_origin"] == "inferred"
+
+
+@pytest.mark.parametrize("tool_name", ["exec", "functions.request_user_input"])
+@pytest.mark.parametrize("result_before_input", [True, False])
+def test_replay_tool_results_respect_input_record_boundary(client, tool_name, result_before_input):
+    from test_codex import parse, records, wait_record
+
+    result = wait_record(3, "function_call_output", call_id="call", output="Recorded tool answer")
+    selected = wait_record(3, "user_message", message="Change direction")
+    rows = [records()[0], wait_record(1, "user_message", message="Initial task"),
+            wait_record(2, "function_call", name=tool_name, call_id="call", arguments="Original arguments"),
+            *([result, selected] if result_before_input else [selected, result])]
+    # Equal timestamps cannot establish which record preceded the selected input.
+    store = client.app.state.store
+    store.ingest(parse(rows))
+    sid = rows[0]["payload"]["id"]
+    original = list(store.export(sid))
+    captured = []
+
+    def complete(messages, **kwargs):
+        captured.append(messages)
+        return {"text": "Synthetic answer", "model": "test", "provider": "test", "dummy": False}
+
+    client.app.state.gateway.complete = complete
+    for _ in range(2):
+        inputs = client.get(f"/api/v1/sessions/{sid}/inputs").json()["items"]
+        response = client.post(f"/api/v1/sessions/{sid}/replay", json={
+            "input_id": inputs[-1]["id"], "replacement": "Replacement input",
+        })
+        assert response.status_code == 200, response.text
+        assert "Original arguments" in str(captured[-1])
+        assert ("Recorded tool answer" in str(captured[-1])) is result_before_input
+        sid = response.json()["session_id"]
+        assert ("Recorded tool answer" in str(list(store.export(sid)))) is result_before_input
+    assert list(store.export(rows[0]["payload"]["id"])) == original
+
+
+def test_replay_rejects_unverified_tool_result_order(client, imported):
+    store = client.app.state.store
+    with store.connect() as db:
+        db.execute("DELETE FROM event_raw_sources")
+    selected = client.get(f"/api/v1/sessions/{imported}/inputs").json()["items"][-1]
+    complete = Mock(return_value={"text": "Synthetic answer", "model": "test", "dummy": True})
+    client.app.state.gateway.complete = complete
+    result = client.post(f"/api/v1/sessions/{imported}/replay", json={
+        "input_id": selected["id"], "replacement": "Replacement",
+    })
+    assert result.status_code == 422
+    assert "reimport" in result.json()["detail"].lower()
+    complete.assert_not_called()
 
 
 def test_replay_validation_and_context_limit(client, imported):

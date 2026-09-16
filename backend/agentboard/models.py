@@ -238,7 +238,15 @@ def branch_context(store, sid, input_id, replacement, max_chars, *, retained_eve
             role = "user" if e["kind"] == "user" else "assistant"
         elif e["kind"] == "tool" or e["attributes"].get("wait_type") == "input_request":
             # Internal requests are timed events, but their answers still belong in replay.
-            text = f"[Recorded tool call: {e['name']}]\n{e['text']}\n{e['attributes'].get('output', '')}"
+            output = e["attributes"].get("output", "")
+            if e["source"] == "codex_jsonl" and "output" in e["attributes"]:
+                raw = store.event_raw(sid, e["id"])
+                if not raw["available"] or len(raw["lines"]) < 2:
+                    raise ValueError("Replay needs verified tool-result ordering; reimport the original rollout")
+                # A tool's sequence identifies its call, not its later result. Timestamps may tie.
+                if max(line["line_number"] for line in raw["lines"]) >= selected["sequence"]:
+                    output = "[No result recorded before the selected input]"
+            text = f"[Recorded tool call: {e['name']}]\n{e['text']}\n{output}"
             role = "assistant"
         else:
             continue

@@ -138,6 +138,25 @@ def test_model_filters_only_matching_usage_and_long_context_uses_full_archive(cl
     assert Decimal(result["summary"]["estimated_cost_usd"]) == Decimal("0.00725")
 
 
+@pytest.mark.parametrize("last_input,expected", [(300000, "0.00725"), (1000, None)])
+def test_filtered_dashboard_preserves_cumulative_context_evidence(client, last_input, expected):
+    from test_usage import context, counts, cumulative, import_rows
+
+    gap = cumulative(counts(input=600000, output=200, cached=0, writes=0),
+                     counts(input=last_input, cached=0, writes=0))
+    gap["timestamp"] = "2026-09-06T12:00:00Z"
+    import_rows(client, context("gpt-5.4"), gap,
+                cumulative(counts(input=601000, output=300, cached=0, writes=0),
+                           counts(cached=0, writes=0)))
+    data = report(client, start="2026-09-07T00:00:00Z", model="gpt-5.4")
+    assert data["summary"]["records"] == 1
+    if expected is None:
+        assert data["summary"]["estimated_cost_usd"] is None
+        assert data["summary"]["unpriced_records"] == 1
+    else:
+        assert Decimal(data["summary"]["estimated_cost_usd"]) == Decimal(expected)
+
+
 @pytest.mark.parametrize("params", [dict(start="yesterday"), dict(start="2026-09-07T00:00:00Z",
     end="2026-09-07T00:00:00Z"), dict(metadata="[]"), dict(metadata="{"), dict(metadata='{"branch":"main"}'),
     dict(producer="other"), dict(limit=0), dict(offset=-1)])

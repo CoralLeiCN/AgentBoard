@@ -98,6 +98,49 @@ def test_legacy_aggregate_has_unknown_model_and_context_tier():
     assert result["priced_subtotal_usd"] is None
 
 
+@pytest.mark.parametrize("override", ["", "gpt-5.4"])
+def test_legacy_last_request_preserves_session_context_evidence(override):
+    short = counts(cached=0, writes=0)
+    result = report(context("gpt-5.4" if not override else "unpublished"),
+                    cumulative(counts(input=600000, output=200, cached=0, writes=0),
+                               counts(input=300000, cached=0, writes=0)),
+                    cumulative(counts(input=601000, output=300, cached=0, writes=0), short),
+                    model_override=override)
+    assert result["items"][0]["model"] is None
+    assert result["items"][0]["cost"]["usd"] is None
+    assert result["items"][1]["cost"]["long_context"] is True
+    assert Decimal(result["items"][1]["cost"]["usd"]) == Decimal("0.00725")
+
+
+@pytest.mark.parametrize("last", [counts(cached=0, writes=0), None])
+def test_unknown_cumulative_requests_do_not_imply_short_session_context(last):
+    gap = cumulative(counts(input=600000, output=200, cached=0, writes=0))
+    gap["payload"]["info"]["last_token_usage"] = last
+    result = report(context("gpt-5.4"), gap,
+                    cumulative(counts(input=601000, output=300, cached=0, writes=0), counts(cached=0, writes=0)))
+    assert result["items"][1]["cost"]["usd"] is None
+    assert result["items"][1]["cost"]["reason"] == "Session context tier unavailable"
+
+
+@pytest.mark.parametrize("model,gap_input", [("gpt-5.4", 2000), ("gpt-5.6-sol", 600000)])
+def test_cumulative_context_uncertainty_only_affects_possible_session_tiers(model, gap_input):
+    result = report(context(model),
+                    cumulative(counts(input=gap_input, output=200, cached=0, writes=0)),
+                    cumulative(counts(input=gap_input + 1000, output=300, cached=0, writes=0),
+                               counts(cached=0, writes=0)))
+    assert result["items"][1]["cost"]["usd"] is not None
+    assert result["items"][1]["cost"]["long_context"] is False
+
+
+def test_cumulative_context_evidence_does_not_override_response_records():
+    result = report(context("gpt-5.4"),
+                    cumulative(counts(input=600000, output=200), counts(input=300000)),
+                    response(counts(cached=0, writes=0)))
+    assert result["source"] == "token_usage_record"
+    assert result["items"][0]["cost"]["long_context"] is False
+    assert Decimal(result["items"][0]["cost"]["usd"]) == Decimal("0.004")
+
+
 def test_cumulative_reset_and_conflicting_response_are_partial():
     result = report(context(), cumulative(), cumulative(counts(input=500)),
                     cumulative(counts(input=1500, cached=400, output=200, reasoning=80, writes=200)))

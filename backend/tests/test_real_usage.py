@@ -40,7 +40,7 @@ def test_real_slice_import_api_pagination_export_and_weighted_breakdown(client):
     imported = client.post("/api/v1/import/codex", content=FIXTURE.read_bytes())
     assert imported.status_code == 200, imported.text
     result = client.get(BASE).json()
-    assert result["analysis_version"] == "codex-usage-v3"
+    assert result["analysis_version"] == "codex-usage-v4"
     assert result["coverage"] == "recorded"  # Coverage of this archive, not the full session.
     assert result["source"] == "token_usage_record"
     assert result["records"] == result["priced_records"] == 6

@@ -36,7 +36,12 @@ async function api(path, options={}) {
   return response;
 }
 async function json(path, options) { return (await api(path,options)).json(); }
-function run(fn) { return (...args)=>Promise.resolve(fn(...args)).catch(e=>notice(e.message,true)); }
+function run(fn) {
+  return async (...args)=>{
+    try { return await fn(...args); }
+    catch(e) { notice(e.message,true); }
+  };
+}
 async function busy(button, fn) { button.disabled=true; try { return await fn(); } finally { button.disabled=false; } }
 function duration(ms) { if(ms==null)return '—'; if(ms<1000)return `${ms.toFixed(ms<10?1:0)} ms`; if(ms<60000)return `${(ms/1000).toFixed(1)} s`; return `${(ms/60000).toFixed(1)} min`; }
 function date(value) { return new Date(value).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); }

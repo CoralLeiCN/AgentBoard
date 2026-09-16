@@ -217,3 +217,25 @@ test('dashboard request failure is visible and leaves controls available for ret
   assert.match(node('#dashboard-content').innerHTML,/Storage unavailable/);
   assert.equal(node('#dashboard-filter-fields').disabled,false);
 });
+
+test('metadata validation shows synchronous errors and allows correction',async()=>{
+  const {node}=setup(['token_usage']);
+  await node('#dashboard-add-metadata').onclick();
+  assert.equal(node('#notice').hidden,false);
+  assert.equal(node('#notice').textContent,'Choose a metadata field and value');
+  node('#dashboard-metadata-key').value='/flag';node('#dashboard-metadata-value').value='true';
+  await node('#dashboard-add-metadata').onclick();
+  assert.match(node('#dashboard-metadata-chips').innerHTML,/\/flag = true/);
+});
+
+test('wrapped handlers report asynchronous errors and prevent form submission immediately',async()=>{
+  const {context,node}=setup(['import','token_usage']);await context.init();
+  context.fetch=async()=>{throw Error('Import unavailable');};
+  await node('#demo').onclick();
+  assert.equal(node('#notice').textContent,'Import unavailable');
+  assert.equal(node('#demo').disabled,false);
+  let prevented=false;
+  const pending=node('#dashboard-filters').onsubmit({preventDefault(){prevented=true;}});
+  assert.equal(prevented,true);
+  await pending;
+});

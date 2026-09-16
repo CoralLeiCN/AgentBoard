@@ -416,7 +416,7 @@ Bound classification context to 60,000 characters by default, preferring one con
 
 **BRANCH-01 — Implemented**
 
-From **Branch & edit**, retain prior text and tool observations, replace the selected prompt, omit later context, call the configured model, and create a linked replay session without altering the original. Label dummy responses. Reject replay histories that cannot be represented safely within the text budget or contain unsupported compaction/rollback.
+From **Branch & edit**, retain prior text and tool observations, replace the selected prompt, omit later context, call the configured model, and create a linked replay session without altering the original. A call before the input must not carry a result recorded afterward; use verified source record order and reject missing result-order evidence. Label dummy responses. Reject replay histories that cannot be represented safely within the text budget or contain unsupported compaction/rollback. See [boundary rules and existing-data treatment](data-lineage.md#10-model-derived-data-and-continuation).
 
 Transcript replay does not execute tools, reconstruct hidden model state, restore historical files, or replay images. It is a text continuation.
 
