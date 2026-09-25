@@ -57,7 +57,7 @@ uv run agentboard --config config/dev.toml --database .agentboard/review-2.db se
 
 Implemented 2026-09-07. The main checkout holds the fixed shared `.agentboard/baseline.db`; each worktree gets its own writable `.agentboard/dev.db`. Share the starting dataset, not a writable SQLite file. Keep the main checkout and its `.agentboard/` directory on this machine. A separate clone or host needs its own local setup.
 
-The [experiment storage design](experiment-storage.md) proposes a separate durable archive outside checkouts and optional publication to a private MLflow service. It is not implemented and does not change this setup, the baseline location, or the local-only data policy below. A future experiment archive must never become a shared writable dev database.
+The [experiment archive](experiment-storage.md#filesystem-commands-and-producer-api) stores explicitly selected datasets/results outside checkouts, under `<AGENTBOARD_DATA_HOME>/experiments/`. Configure it once per machine; the selected data home is `/Users/coral/.agentboard/data`. It is separate from the baseline/dev setup below and must never become a shared writable dev database. Evidence remains local; private MLflow publication is not implemented.
 
 **Create the baseline once.** Select a few completed real sessions from local Codex `sessions/` or `archived_sessions/`, covering multiple turns, tool use, usage records, and internal/subagent activity. Pass complete files explicitly:
 
@@ -107,7 +107,7 @@ Verification: [worktree tests](../backend/tests/test_worktree_setup.py) cover ac
 
 ## Configuration and boundaries
 
-`--config` works with every CLI command. Precedence is CLI overrides, explicit TOML values, environment defaults, then built-in defaults. TOML database paths resolve relative to the config file; CLI `--database` paths resolve relative to the working directory. Unknown keys and invalid types are rejected. The dev file pins its database, port, tracing feature allowlist, and dummy model mode, so inherited feature/model settings do not enable live receivers or model calls. Legacy plugin configuration is rejected; remove it before starting. The [feature catalog](features.md) describes the allowlist and dependencies.
+`--config` applies to trace commands. The separate `experiments` commands use `--archive-config` and `--data-home`; see [experiment settings](experiment-storage.md#storage-locations-and-configuration). Precedence is CLI overrides, explicit TOML values, environment defaults, then built-in defaults. TOML database paths resolve relative to the config file; CLI `--database` paths resolve relative to the working directory. Unknown keys and invalid types are rejected. The dev file pins its database, port, tracing feature allowlist, and dummy model mode, so inherited feature/model settings do not enable live receivers or model calls. Legacy plugin configuration is rejected; remove it before starting. The [feature catalog](features.md) describes the allowlist and dependencies.
 
 The dev allowlist excludes `otlp_logs` and `otlp_traces` but enables explicit imports and tracing analysis. For a receiver experiment, use a separate temporary test configuration whose feature list includes the required OTLP signal and send controlled synthetic requests; do not point the global Codex exporters at it. To test classification or continuations, add the relevant feature and its dependencies to that temporary configuration.
 

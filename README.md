@@ -8,7 +8,7 @@ Import Codex sessions and inspect LLM/tool timing in a mandatory browser dashboa
 | [Configurable features](docs/features.md) | Required core, optional capabilities, defaults, configuration, internal module contract |
 | [First-party modular feature plan](docs/modular-features-plan.md) | VS Code/Obsidian lessons, approved architecture target, staged refactor, deferred plugins |
 | [Specification](docs/specification.md) | Requirements, status, acceptance criteria |
-| [Experiment storage design](docs/experiment-storage.md) | Accepted, not implemented: durable filesystem archives and optional self-hosted MLflow publication |
+| [Experiment storage design](docs/experiment-storage.md) | Filesystem archive and offline reports; optional MLflow publication remains planned |
 | [Data lineage](docs/data-lineage.md) | Raw mappings, timing, reimports, evidence limits |
 | [Data-quality gaps](docs/data-quality-gaps.md) | Correctness concerns and proposed checks |
 | [Backlog](docs/backlog.md) | Future capacity, languages, and integrations |
