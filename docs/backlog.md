@@ -1,8 +1,10 @@
 # AgentBoard backlog and wishlist
 
-Updated: 2026-09-08
+Updated: 2026-09-25
 
 Future capabilities for review, not initial-release acceptance criteria or delivery commitments. Current requirements live in the [specification](specification.md); current correctness concerns in the [gap register](data-quality-gaps.md).
+
+The separate [experiment follow-ups](#experiment-storage-and-classification-follow-ups) track delivered filesystem work and pending shared-storage implementation and classifier execution; they do not defer its requirements to the wishlist.
 
 **Clarified 2026-09-08:** the [principles](principles.md) require high performance and complete raw collection throughout the Python prototype; [RAW-01/PERF-01](specification.md#11-raw-capture-and-performance-acceptance) define acceptance. WL-001 defers larger deployment capacity and infrastructure. Efficient implementation and performance measurement apply now.
 
@@ -13,6 +15,7 @@ Future capabilities for review, not initial-release acceptance criteria or deliv
 | WL-001 | Efficient high-volume tracing service | Initial requirement; user explicitly deferred it to the wishlist on 2026-09-06. |
 | WL-002 | Migrate backend components if performance justifies it | Future option from initial requirements; retain Python now. |
 | WL-003 | OpenCode, Pi Agent, and Claude Code integrations | Future candidates from initial requirements; only Codex ships. |
+| WL-004 | Hugging Face dataset version storage | User-selected future direction, 2026-09-25; adapter and migration deferred, datasets remain local initially. |
 
 Priorities, owners, implementation plans, and delivery dates are unassigned. Row order is not priority order.
 
@@ -57,6 +60,25 @@ Review API/canonical-event compatibility, data migration, local installation cos
 
 Consider **OpenCode**, **Pi Agent**, and **Claude Code** after initial Codex support. For each, review session/telemetry formats, identity, human-input evidence, timing quality, tool lifecycle, and continuation behavior. Use the [first-party module contract](features.md#first-party-module-contract), owned adapters, and shared event/API contract; do not assume Codex-equivalent evidence or replay capabilities.
 
+## WL-004 — Hugging Face dataset version storage
+
+Move dataset version storage to Hugging Face in a future phase while retaining experiment results under `<AGENTBOARD_DATA_HOME>/experiments/`. The [storage design](experiment-storage.md#future-dataset-storage) owns the separation between logical dataset identity and storage location. The implemented recorder works entirely with local files; no adapter, repository, or upload is configured now.
+
+Before implementation, define repository ownership/access, immutable revision mapping, subset/schema compatibility, and a scoped sharing policy for selected evidence. Verify source bytes and dependency resolution across migration, retain local evidence required for offline reports, and preserve existing result/input hashes. Do not use a moving branch as a reproducibility reference or silently redact raw sources during transfer. Test the adapter and restoration with synthetic artifacts before selected real data.
+
+## Experiment storage and classification follow-ups
+
+Implementation status and pending work, updated 2026-09-25. This register does not schedule classifier runs. The [specification](specification.md#15-durable-experiment-storage) owns acceptance criteria; the [storage design](experiment-storage.md#migration-and-implementation-sequence) owns implementation order.
+
+| ID | Follow-up | Status / completion evidence |
+| --- | --- | --- |
+| EXP-TODO-01 | Implement the filesystem recorder/reader at the agreed data home, with `experiments/{datasets,runs,staging,sync}/` and project identity in metadata. | Implemented with synthetic regressions and an offline copy/restore example. Baseline/dev databases remain separate. See the [filesystem interface](experiment-storage.md#filesystem-commands-and-producer-api). |
+| EXP-TODO-02 | Import the one current combined dataset and selected historical runs; derive per-model pending coverage. | Completed 2026-09-25: one combined dataset and eight legacy bundles migrated; coverage and verification receipts saved. All 5,484 selected files verified, originals unchanged, repeat import reused all nine IDs. Migration scripts and the legacy import command were subsequently removed; no compatibility layer is maintained. See the [migration audit](experiment-storage.md#local-migration-audit). |
+| EXP-TODO-03 | Run classifiers later on missing or changed-input targets in the 247-session, 1,431-turn dataset. | Pending experiment execution. Preserve existing outputs; the [dated coverage audit](experiment-storage.md#current-dataset-and-pending-classification) identifies 772 missing/changed-input turns per configuration, plus one invalid GPT-5.6 Luna batched result: 773 distinct turns pending across the six configurations. Select model/configuration and explicit target subsets, then save new runs and refreshed coverage reports. No execution or result is implied by this entry. |
+| EXP-TODO-04 | Add the optional private MLflow service, publisher/fetcher, and tested backup/restore. | Accepted, not implemented. Verify complete dependency transfer, separate publication state, retry/conflict handling, access policy, and isolated restoration before selected real-data rollout. |
+
+These tasks do not relocate the shared baseline/dev databases or fix split-session normalization. Existing source evidence and historical runs remain preserved. WL-004 is a later dataset-storage migration, not a prerequisite for local recording or pending classification work.
+
 ## Review process
 
 Review date: **not scheduled**; no automatic reminder exists. At review, retain, investigate, accept, or drop each item. Log the decision and update the specification only for accepted scope. Throughput, deadlines, and priorities remain open until agreed.
@@ -70,3 +92,7 @@ Human/context/internal-input correctness remains tracked in [specification §7](
 | 2026-09-06 | User requested a separate backlog/wishlist for high-volume service support, to be reviewed later. Keep initial-release deployment scope unchanged. |
 | 2026-09-06 | Recorded the original future-language and future-agent options alongside that item; no implementation or prioritization decision was made. |
 | 2026-09-08 | User requires high performance while prototyping in Python and complete raw capture for future analysis. Record these as current requirements (RAW-01/PERF-01); keep larger deployment infrastructure and language replacement separate. |
+| 2026-09-25 | Use `/Users/coral/.agentboard/data` as the selected machine data home, with experiment evidence under `experiments/` and no project-directory layer. Keep one current combined dataset; historical runs provide partial coverage, with remaining classifications pending for later execution. |
+| 2026-09-25 | Record future Hugging Face dataset version storage as WL-004; keep filesystem recording first and optional MLflow publication separate. |
+| 2026-09-25 | Implemented filesystem storage and completed the subsequently requested local migration. Preserve original evidence and partial coverage; defer model execution and remote publication. The validity-aware audit adds one pending GPT-5.6 Luna result to the earlier input-reuse count. |
+| 2026-09-25 | Retire legacy filesystem migration scripts and the import command after the verified migration. Maintain the recorder/reader and coverage reports; retain immutable migrated evidence and the audit receipt. |

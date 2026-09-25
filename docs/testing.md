@@ -28,6 +28,7 @@ Use `-k` to select a test by name while iterating. Choose additional coverage ac
 | Frontend behavior | Rendering, state and requests in [Node tests](../frontend/tests/), plus the affected flow in the [browser](#browser-checks). For feature controls, verify disabled endpoints are not requested. |
 | Model or native continuation integration | Mock/dummy/fake-protocol regressions, plus relevant [private model tests](#private-model-tests) when real execution is needed. Native execution needs an extension to that isolated harness. |
 | Codex CLI upgrade or app-server integration | [Schema compatibility checks](#schema-and-performance-checks), plus affected integration regressions. |
+| Experiment archives | [Synthetic recorder/coverage tests](../backend/tests/test_experiments.py) and `uv run python examples/experiment_storage.py`; verify copied bytes, pinned dependencies, interrupted evidence and deterministic offline analysis. No model or tracking service is needed. |
 | Documentation only | Verify changed links, examples and claims against their source, and run `git diff --check`; application suites are unnecessary unless behavior also changes. |
 
 ## Routine checks before handoff

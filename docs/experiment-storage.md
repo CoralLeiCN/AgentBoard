@@ -1,19 +1,19 @@
 # Experiment storage architecture
 
-**Accepted design, not implemented — 2026-09-25.** Save experiment evidence to durable files outside Git checkouts, then optionally publish those files and searchable metadata to self-hosted MLflow. [Specification §15](specification.md#15-durable-experiment-storage) owns the requirements and acceptance criteria. No recorder, storage setting, publisher, or deployment described here ships yet.
+**Filesystem implemented — 2026-09-25.** The recorder, reader and offline coverage report use durable files outside Git checkouts. Optional MLflow publication/deployment and Hugging Face dataset storage remain planned. [Specification §15](specification.md#15-durable-experiment-storage) owns the requirements and acceptance criteria.
 
 ## Current behavior and motivation
 
-The [independent classification report](experiments/2026-09-23-turn-purpose-independent-luna.md#interpretation-and-evidence) documents private inputs, model outputs, comparisons, and logs under the main checkout's ignored `.agentboard/experiments/`. Its published report is versioned; the supporting files are local. Future reports need those exact files and their relationships even after a worktree is removed.
+The [independent classification report](experiments/2026-09-23-turn-purpose-independent-luna.md#interpretation-and-evidence) documents private inputs, model outputs, comparisons, and logs under the main checkout's ignored `.agentboard/experiments/`. Its published report is versioned; the supporting files are local. The completed one-time migration preserved these originals and added portable bundles at the machine data home, so reports retain their dependencies after worktree removal.
 
-The [development workflow](development.md#automatic-worktree-data-setup) shares a fixed baseline through independent writable dev snapshots. [Settings](../backend/agentboard/config.py), the [CLI](../backend/agentboard/cli.py), and [dependencies](../pyproject.toml) provide no experiment archive or MLflow integration. Database snapshots are recovery evidence, not an experiment catalog. This design adds a separate facility; it does not replace the trace Store or baseline workflow.
+The [development workflow](development.md#automatic-worktree-data-setup) shares a fixed baseline through independent writable dev snapshots. The [experiment CLI](../backend/agentboard/experiments/cli.py) has separate machine settings and dispatches before the trace Runtime. The standard-library [recorder](../backend/agentboard/experiments/archive.py) adds no MLflow dependency. Database snapshots are recovery evidence, not an experiment catalog. This facility does not replace the trace Store or baseline workflow.
 
 ## Selected modes and components
 
 | Mode | Required behavior |
 | --- | --- |
 | `filesystem` (default) | Record, discover, inspect, verify, and read experiments using ordinary local files. No MLflow installation, account, network request, or server is needed. |
-| `mlflow` | Perform the same local recording, then attempt publication of finalized runs to the configured private server. Local evidence remains usable during server outages. Fetch selected remote runs into the same archive format. |
+| `mlflow` (planned; rejected by the current CLI) | Perform the same local recording, then attempt publication of finalized runs to the configured private server. Local evidence remains usable during server outages. Fetch selected remote runs into the same archive format. |
 
 ```mermaid
 flowchart TD
@@ -28,7 +28,7 @@ flowchart TD
     T[Other machines with their own archive and publisher] <--> M
 ```
 
-The recorder, portable manifest, dependency resolver, and publication journal are AgentBoard integration work. MLflow supplies its tracking API, catalog/UI, and artifact transport. Its [tracking server](https://mlflow.org/docs/latest/self-hosting/architecture/tracking-server/) supports a database backend and proxied artifact access; its [artifact store](https://mlflow.org/docs/latest/self-hosting/architecture/artifact-store/) can use a local filesystem. These upstream capabilities do not supply our preservation or synchronization guarantees automatically.
+The recorder, portable manifest and dependency resolver are implemented AgentBoard components. Publication/fetching and their journal remain integration work. MLflow supplies its tracking API, catalog/UI, and artifact transport. Its [tracking server](https://mlflow.org/docs/latest/self-hosting/architecture/tracking-server/) supports a database backend and proxied artifact access; its [artifact store](https://mlflow.org/docs/latest/self-hosting/architecture/artifact-store/) can use a local filesystem. These upstream capabilities do not supply our preservation or synchronization guarantees automatically.
 
 | Component | Ownership and boundary |
 | --- | --- |
@@ -38,27 +38,35 @@ The recorder, portable manifest, dependency resolver, and publication journal ar
 | Shared MLflow service | Provide authenticated team search, comparisons, metadata, and artifact transfer. Store files on its own persistent disk and metadata in PostgreSQL. |
 | Existing AgentBoard runtime | Continue serving sessions and managing its own SQLite database. Ordinary ingestion, UI activity, classification, and replay do not automatically become experiment runs. |
 
-For example, batched classification and independent classification are two runs in one MLflow experiment group. Individual model calls are retained as artifacts within their run. A comparison/report is another run with both source runs as inputs. These are integration targets; existing scripts/folders are not discovered or uploaded automatically.
+For example, batched classification and independent classification are two runs in one MLflow experiment group. Individual model calls are retained as artifacts within their run. A comparison/report is another run with both source runs as inputs. Filesystem runs support this relationship now; MLflow mapping remains a target. Existing scripts/folders are not discovered or uploaded automatically.
 
 ## Storage locations and configuration
 
-One machine-level archive is shared by that machine's main checkout and worktrees. Different machines have separate archives and retrieve selected results through MLflow. Local/server copies are deliberate replicas; no result copy is required for each worktree. Local archives are permanent evidence, not automatically evicted caches.
+One machine-level archive is shared by that machine's main checkout and worktrees. Different machines can use separate archives; MLflow retrieval is planned. Local bundles can already be copied and verified at another data home. Local/server copies are deliberate replicas; no result copy is required for each worktree. Local archives are permanent evidence, not automatically evicted caches.
 
-Proposed settings, **not supported by current AgentBoard configuration**:
+Experiment settings are separate from trace TOML/SQLite configuration. Precedence is **CLI flags > machine TOML > environment**. The machine file defaults to `~/.agentboard/config.toml`; `--archive-config` selects another file. A data home is required, with no working-directory fallback:
 
 | Setting | Contract |
 | --- | --- |
-| `AGENTBOARD_DATA_HOME` | Required absolute archive root for experiment commands, configured once per machine. Resolve symlinks and reject roots inside relevant checkouts or Git metadata. No fallback to the current directory. |
-| `AGENTBOARD_EXPERIMENT_MODE` | `filesystem` by default; `mlflow` explicitly enables publication. Reject unknown values. |
-| `MLFLOW_TRACKING_URI` | In shared mode, require the designated private HTTPS tracking service; missing/invalid configuration must not silently create a local MLflow store. |
+| `AGENTBOARD_DATA_HOME` | Required absolute machine data root; experiment evidence lives under its `experiments/` child. The selected location on the current machine is `/Users/coral/.agentboard/data`. Resolve symlinks and reject data/archive roots inside relevant checkouts or Git metadata. No fallback to the current directory. |
+| `AGENTBOARD_EXPERIMENT_MODE` | `filesystem` by default. Unknown values and the unimplemented `mlflow` mode fail explicitly. |
+| `MLFLOW_TRACKING_URI` (future) | Ignored by filesystem mode. In future shared mode, require the designated private HTTPS tracking service; missing/invalid configuration must not silently create a local MLflow store. |
 
-The recorder accepts a stable project namespace and experiment group explicitly; neither is derived from a worktree path or branch name. Credentials use deployment secret configuration, never artifact metadata. Filesystem mode must ignore inherited tracking configuration and avoid importing MLflow. Implementation must define CLI/config precedence and add these settings to the supported interface before publishing runnable examples.
+The recorder accepts a stable project namespace and experiment group explicitly as metadata; neither is derived from a worktree path or branch name, and neither adds a directory level. Credentials use deployment secret configuration, never artifact metadata. Filesystem mode ignores inherited tracking configuration and never imports MLflow. The supported machine TOML is:
 
-Illustrative layout under the configured root:
+```toml
+[experiments]
+data_home = "/Users/coral/.agentboard/data"
+mode = "filesystem"
+```
+
+Trace `--config` and `--database` flags are rejected for experiment commands; use `experiments --archive-config` instead.
+
+Implemented layout under the configured root:
 
 ```text
 <data-home>/
-  projects/<project>/
+  experiments/
     datasets/<dataset-id>/     # Immutable manifest and complete source files
     runs/<run-id>/
       manifest.json
@@ -70,9 +78,55 @@ Illustrative layout under the configured root:
     sync/                     # Mutable local publication journal and ID mappings
 ```
 
-Project names and artifact paths must be validated as safe relative names: reject absolute paths, traversal, and escaping symlinks on both write and fetch. Dataset and run IDs are UUIDs independent of Git and MLflow IDs. Reuse a dataset ID only for identical verified content. A filesystem reader scans manifests; any future index is rebuildable and is not the evidence source.
+There is no `projects/<project>/` directory. Validate project namespace metadata and safe relative artifact paths; reject absolute artifact paths, traversal, and escaping symlinks on both write and fetch. Dataset and run IDs are UUIDs independent of Git and MLflow IDs. New recorder calls allocate new IDs. Existing verified bundles retain their IDs when copied to another data home. A filesystem reader scans manifests; any future index is rebuildable and is not the evidence source. Lifecycle paths such as `runs/`, `staging/`, and `sync/` below are relative to `<data-home>/experiments/`.
 
-Each worktree still owns `.agentboard/dev.db`; the fixed baseline and checkpoints follow the existing workflow. Do not symlink these databases to the archive or share writable SQLite files across machines. Archive a running database only through a consistent [snapshot](../backend/agentboard/snapshot.py), not a raw copy of its database/WAL files.
+Each worktree still owns `.agentboard/dev.db`; the fixed baseline and checkpoints follow the existing workflow. Do not symlink these databases to the archive or share writable SQLite files across machines. Archive a running database only through `Recorder.add_sqlite_snapshot()` (SQLite backup plus integrity check) or the existing [snapshot command](../backend/agentboard/snapshot.py).
+
+## Filesystem commands and producer API
+
+```sh
+uv run agentboard experiments list
+uv run agentboard experiments inspect RUN_ID
+uv run agentboard experiments verify RUN_ID
+uv run agentboard experiments read RUN_ID outputs/results.json > /tmp/results.json
+uv run agentboard experiments coverage /absolute/path/coverage-recipe.json
+uv run agentboard experiments recover UNFINISHED_ID
+uv run python examples/experiment_storage.py
+```
+
+`list` discovers manifests and unfinished staging without hashing every artifact; `verify` checks every file and the transitive pinned input closure. `inspect` reads metadata; `read` verifies before streaming bytes. None executes saved code. The [synthetic example](../examples/experiment_storage.py) explicitly records a dataset and saved result, calculates coverage, copies/restores the archive and regenerates identical report bytes with the saved standalone analysis. It uses temporary directories and makes no model call.
+
+Python producers explicitly create `Archive(absolute_data_home)`, call `begin(project, experiment, kind=..., metadata=..., inputs=...)`, add original files with `add_file()` or derived JSON with `add_json()`, then `finalize(outcome="succeeded")` or `finalize(outcome="failed")`. Retain prompts, attempts, outputs, relevant code and environment evidence explicitly. The recorder never infers them from a working directory. Obtain pinned references with `archive.reference(id, path)` and resolve them through `archive.resolve(reference)`.
+
+The one-time legacy migration is complete. Its importer, `experiments import` command and working migration scripts have been removed; legacy migration compatibility is not maintained. New producers use the recorder API directly. The [migration audit](#local-migration-audit) and immutable archived evidence remain available.
+
+Interrupted staging is visible. Explicit `recover` seals preserved evidence as `interrupted`, with no invented end time; partial files are retained as incomplete evidence. A recovery filename collision fails before overwriting either artifact. This implementation uses POSIX filesystem locks and requires a local filesystem supporting atomic rename and fsync; network filesystems and Windows are not verified.
+
+Coverage recipes use `format_version: "classification-coverage-v1"`, `project`, `experiment`, a pinned `dataset` reference to the turn array, and `results` entries containing a pinned `reference` and `format` (`turn-comparison-v1` or `independent-turn-v1`). These adapters interpret the retained historical result layouts; they are not general schema inference. Each model/reasoning-effort/execution-mode combination is separate. Overlapping configurations or duplicate targets fail for explicit reconciliation. Missing targets or absent/null per-model comparison results, changed complete input hashes, unsupported categories, absent reasons and recorded prompt-compliance errors remain pending. Extra historical targets are reported outside the requested subset. No entries disappear from the denominator.
+
+A coverage run saves the recipe, materialized pinned inputs, standalone standard-library analysis source and deterministic output. It pins the complete source manifests, preserving prompts and provenance alongside the analysis. The output distinguishes batched and independent execution; it does not establish model equivalence, validate provider internals, or waive historical semantic errors. Unsupported schemas/providers fail without executing archive contents.
+
+## Current dataset and pending classification
+
+**Selected dataset, clarified 2026-09-25:** retain one current combined dataset:
+
+| Dataset | User sessions | Recorded turn targets |
+| --- | ---: | ---: |
+| Local through September 24 + Spark | 247 | 1,431 |
+
+The local cutoff is `2026-09-25T00:00:00+01:00`, exclusive (Europe/London). Complete source files remain intact; cutoff selection applies to the classifier inputs. The earlier smaller cohorts describe historical executions, not two additional active dataset versions required by this migration. Preserve their exact inputs, subset manifests, outputs, and required source dependencies as historical run evidence. One current dataset does not make finalized content mutable: a later content change still requires a new immutable identity or revision.
+
+Existing runs cover only subsets of this dataset. The private import audit on 2026-09-25 records 666 historically labeled turns: 659 retain matching classifier input hashes, and seven need reclassification because restored predecessor context changed. Another 616 Spark turns and 149 local turns have no labels. The input-reuse audit therefore identified **772 missing or changed-input targets** (`616 + 149 + 7`), out of 1,431. That input-reuse audit did not validate every saved label. The implemented validity-aware report finds **one additional GPT-5.6 Luna batched result with a recorded prompt-compliance error**. Five configurations therefore have 659 available / 772 pending; GPT-5.6 Luna low, batched has 658 available / 773 pending. Across all six configurations, 773 distinct turns are pending in at least one configuration. These are distinct-turn counts, not model-call counts; the underlying archives remain private local evidence.
+
+Keep historical execution outcomes unchanged. A succeeded run on its original subset can coexist with **pending coverage** of the current dataset. Record the requested target subset, available results, missing/invalid results, and changed-input reasons against session/turn identities and full classifier input hashes, including predecessor context. Never fill missing targets with inherited labels or count incompatible configurations as coverage. Reports state the requested denominator and every excluded or pending target.
+
+Later classifier executions create new runs over explicit pending targets, with references to reusable prior results; they do not append to finalized historical runs. Recording, migration, and coverage calculation make no model calls. [Storage and classifier follow-ups](backlog.md#experiment-storage-and-classification-follow-ups) are tracked separately.
+
+## Future dataset storage
+
+**Deferred direction:** move dataset version storage to Hugging Face while keeping experiment results in this archive. Initially, datasets use `experiments/datasets/`. Keep logical dataset identity, immutable content/version references, subset selection, and hashes separate from their storage location, so a later adapter can resolve the same evidence elsewhere.
+
+The future adapter must pin a dataset repository and immutable revision, plus manifest/artifact hashes; a local pathname or moving branch name is insufficient. Preserve verified local evidence needed for offline report regeneration. This is a dataset-storage extension, not a third experiment publication mode or a required dependency for filesystem recording. Repository/access policy, revision mapping, and migration verification belong to [WL-004](backlog.md#wl-004--hugging-face-dataset-version-storage). No Hugging Face adapter or dataset upload is part of the initial implementation.
 
 ## Portable evidence contract
 
@@ -84,6 +138,7 @@ Version 1 uses UTF-8 JSON manifests and preserves original artifact bytes. Raw J
 | `started_at`, `ended_at`, `outcome` | UTC RFC 3339 timestamps following the [timestamp contract](data-lineage.md#61-timestamp-contract). Outcome is `succeeded`, `failed`, `interrupted`, or `unknown`; unavailable historical timestamps remain null with a provenance gap. |
 | `code`, `environment`, `configuration` | Commit when known, dirty-state indication, saved script/source snapshot or patch plus required base source, dependency lock, command, parameters, model/provider/version and inference settings when applicable. Retain relevant untracked scripts too. Missing information is a named gap; a commit hash alone is not a preserved executable environment. Do not snapshot unrelated repository files. |
 | `inputs` | Exact local or external archived artifact references: project, run/dataset ID, immutable manifest SHA-256, relative artifact path, and file SHA-256. Include all dependencies required by the declared computation; original machine paths are provenance only, never retrieval contracts. |
+| `coverage` (classification runs/reports) | Pin the dataset and requested target-subset artifact, model/inference configuration, and session/turn identities with full classifier input hashes. Reference available results and pending targets with reasons. Preserve the historical execution subset; current-dataset coverage is a separate derived report, independent of execution and publication outcomes. |
 | `files` | Inventory of every evidence file: relative path, role, media type, byte size, SHA-256, and schema/version for structured results. SHA-256 covers original bytes, not decoded/reformatted JSON. The manifest does not hash itself. |
 | `metrics` | Named values with units, origins, and source references/calculation versions. Missing values are null with a reason; omit unavailable metrics from MLflow's numeric projection. Estimated cost must retain its rate-card artifact and currency. |
 | `relationships`, `provenance_gaps` | Optional explicit supersedes/comparison relationships and known missing source/code/model evidence. Report inputs use `inputs`; relationships do not substitute for dependency inventories. |
@@ -104,6 +159,8 @@ All supplied attempts and intermediate files are retained, including malformed o
 Regenerating C uses saved responses and makes no model call. The declared deterministic analysis must reproduce its substantive tables from preserved inputs/environment; timestamps or packaging bytes may differ and must be identified. A fresh model execution is a new experiment and is not guaranteed to reproduce old answers. Reading a downloaded archive must never automatically execute its saved scripts or deserialize executable objects.
 
 ## MLflow mapping and publication
+
+**Planned; no publisher, fetcher or service is implemented.**
 
 | Portable evidence | MLflow projection |
 | --- | --- |
@@ -127,19 +184,29 @@ Deploy one private MLflow service with PostgreSQL metadata and a persistent serv
 
 Provide HTTPS, authenticated team access, restricted host configuration, and privately managed credentials. MLflow offers [authentication and experiment permissions](https://mlflow.org/docs/latest/self-hosting/security/basic-http-auth/); deployment must verify access with synthetic data. Pin/test MLflow and database versions when implementing the deployment. S3, distributed storage, Kubernetes, and a job queue are unnecessary for this design.
 
-The [current local-only policy](development.md#automatic-worktree-data-setup) remains in force. Implementing shared mode requires a documented, scoped policy for owner-designated experiment bundles and their dependencies going to the designated private service; it must not become a blanket upload of Codex homes, live telemetry databases, or unrelated worktrees. Configure the approved destination explicitly. Recorder-generated metadata excludes credentials; supplied raw evidence is preserved rather than silently redacted. A bundle that cannot be shared stays local and reports the restriction. This design PR moves or publishes no real evidence.
+The [current local-only policy](development.md#automatic-worktree-data-setup) remains in force. Implementing shared mode requires a documented, scoped policy for owner-designated experiment bundles and their dependencies going to the designated private service; it must not become a blanket upload of Codex homes, live telemetry databases, or unrelated worktrees. Configure the approved destination explicitly. Recorder-generated metadata excludes credentials; supplied raw evidence is preserved rather than silently redacted. A bundle that cannot be shared stays local and reports the restriction. The filesystem migration is local only and publishes no evidence.
 
-Back up both local archives and the service's metadata/artifacts, including authentication configuration needed for restoration. Keep backups on separate storage; local/server replicas are not independent historical backups. Define a coordinated database/artifact backup point or quiesce publication during backup, then verify completion markers and hashes after restoration. Test restoration to an isolated destination, including downloading a run and resolving report inputs. Agree the backup schedule, retention, and recovery window before real-data rollout. Version 1 performs no automatic archive deletion or garbage collection; retain all report dependencies.
+Back up both local archives and the service's metadata/artifacts, including authentication configuration needed for restoration. Keep backups on separate storage; local/server replicas are not independent historical backups. Define a coordinated database/artifact backup point or quiesce publication during backup, then verify completion markers and hashes after restoration. Test restoration to an isolated destination, including downloading a run and resolving report inputs. Agree the shared service backup schedule, retention, and recovery window before its real-data rollout. Automated local backups and a tested operational recovery schedule are not implemented; the synthetic example verifies local copy/restore semantics only. Version 1 performs no automatic archive deletion or garbage collection; retain all report dependencies.
 
 ## Migration and implementation sequence
 
-1. **Portable filesystem format:** implement the recorder/reader, machine-level root, validation, interrupted-run recovery, and offline report example. Keep MLflow optional and tracing startup unchanged.
-2. **Legacy import:** inventory explicitly selected experiment directories, all files, and their referenced source archives. Produce a dry-run hash/provenance report; copy into new bundles and verify every byte without removing originals. Record missing historic configuration as unknown. Journal each source inventory so identical repeat imports reuse the mapping; changed sources require a new run. Do not run models to fill gaps.
+1. **Portable filesystem format (implemented):** provide the recorder/reader under `<data-home>/experiments/`, validation, interrupted-run recovery, and offline report example. Keep project identity in metadata, dataset references independent of their storage location, MLflow optional, and tracing startup unchanged.
+2. **One-time legacy migration (completed):** the selected directories, full source dependencies and one combined dataset were inventoried, copied and verified. Historical subsets, raw files, unknown provenance and pending coverage were preserved. The migration tooling was then removed at the user's request; no legacy import interface is maintained. New reports and experiments use the recorder directly.
 3. **Shared service and adapter:** implement the private deployment, scoped data policy, publication journal, dependency transfer, and fetch verification. Establish behavior against pinned MLflow versions using synthetic runs before publishing selected real evidence.
-4. **Producer adoption and recovery:** instrument experiment/report scripts, migrate references only after verified imports, and exercise backup/restore and cross-machine reads. Existing report documents remain evidence of their original execution; migration records add storage provenance without rewriting history.
+4. **Producer adoption and recovery:** instrument experiment/report scripts, migrate references only after verified imports, and exercise backup/restore and cross-machine reads. Existing report documents remain evidence of their original execution; migration records add storage provenance without rewriting history. Later classifier executions address pending targets as new runs; they are separate from storage migration.
 
-These steps do not refresh, relocate, or migrate the development baseline/dev databases. Remaining implementation decisions include the exact Python/CLI interface, machine configuration mechanism, service host/version pins, operator credential setup, and backup schedule. They do not change the selected two modes, portable evidence contract, or filesystem-backed MLflow architecture.
+These steps do not refresh, relocate, or migrate the development baseline/dev databases. Remaining decisions concern the future service host/version pins, operator credential setup and operational backup schedule. They do not change the selected two modes, portable evidence contract, or filesystem-backed MLflow architecture.
+
+## Local migration audit
+
+**Completed 2026-09-25.** The owner-selected data home contains one dataset (247 user sessions, 1,431 targets, 346 complete raw rollout files), eight preserved historical experiment/import bundles, a coverage report and a migration verification report. The initial copy inventory contained **5,484 files / 13,551,950,073 bytes**, including canonical dataset evidence and portable legacy reference maps. Every copied file and dependency passed SHA-256 verification; originals still matched the dry-run inventory. An identical repeat import reused all nine imported identities, and staging is empty.
+
+The current coverage report pins the dataset, five-model comparison and independent Luna results. Its archived standalone analysis regenerated byte-identical output without AgentBoard imports or model calls. The private receipt retains the explicit source inventory/plan, source-to-bundle mappings, source snapshots, environment lock and verification results. Archived script copies are immutable audit evidence, not a maintained migration interface. `sync/current-classification.json` provides rebuildable navigation pointers to the dataset, coverage and receipt; pinned immutable manifests remain authoritative. Use `agentboard experiments list` with the configured machine data home to inspect the catalog.
+
+All complete source files, archived SQLite snapshots, raw attempts, private scripts and intermediate results remain preserved. Earlier cohorts exist as historical evidence, not additional active dataset bundles. Split-session normalization limitations and unknown historic execution provenance remain explicit. The migration did not alter baseline/dev databases, execute classifiers, upload evidence or establish a separate-storage backup.
 
 ## Verification status
 
-This document is based on source review and the linked upstream documentation, not an executed prototype. No application behavior, dependency, configuration, schema, service, or data location changes with this design. [EXP-01–12](specification.md#15-durable-experiment-storage) enumerate the required implementation checks; follow the [testing guide](testing.md) when implementing them. Review documentation links/examples and run `git diff --check` for this documentation-only change.
+[Synthetic regressions](../backend/tests/test_experiments.py) cover exact byte preservation, immutable identities, invalid roots/paths, Git worktrees, pinned hashes/dependencies, missing/cyclic inputs, unsupported versions, write failures, partial recovery, SQLite WAL snapshots, same-prefix artifact paths, CLI isolation, pending coverage and offline report regeneration after copy/restore. The [example](../examples/experiment_storage.py) exercises recording and deterministic regeneration without a server or model. These tests do not establish network-filesystem durability, remote publication, provider reproducibility or operational backup guarantees.
+
+[EXP-01–14](specification.md#15-durable-experiment-storage) retain the full acceptance contract, including planned shared-mode checks. Follow the [testing guide](testing.md); no UI, model or app-server protocol behavior changes in this implementation.

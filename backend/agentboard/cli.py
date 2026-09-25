@@ -39,6 +39,9 @@ def main():
     parser.add_argument("--config", type=Path, help="TOML settings file; explicit values override environment defaults")
     parser.add_argument("--database", default=None)
     commands = parser.add_subparsers(dest="command", required=True)
+    from .experiments.cli import configure as configure_experiments
+
+    configure_experiments(commands)
     commands.add_parser("features", help="List available features and the configured allowlist as JSON")
     serve = commands.add_parser("serve", help="Serve the API and trace explorer")
     serve.add_argument("--host", default=None)
@@ -80,6 +83,16 @@ def main():
     reprocess = commands.add_parser("reprocess", help="Explicitly normalize retained raw data with current mappings")
     reprocess.add_argument("capture_id", type=positive_count)
     args = parser.parse_args()
+    if args.command == "experiments":
+        from .experiments.cli import execute as execute_experiments
+
+        if args.config or args.database:
+            parser.error("Experiment commands use --archive-config/--data-home, not trace --config/--database")
+        try:
+            execute_experiments(args)
+        except (OSError, ValueError, KeyError, TypeError, sqlite3.Error) as exc:
+            parser.error(str(exc))
+        return
     try:
         settings = Settings.from_file(args.config) if args.config else Settings()
     except (OSError, ValueError) as exc:
