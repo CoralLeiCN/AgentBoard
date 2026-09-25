@@ -1,6 +1,6 @@
 # AgentBoard product specification
 
-Updated: 2026-09-08
+Updated: 2026-09-25 (experiment storage requirements)
 
 Agreed requirements, implementation status, and acceptance criteria for AgentBoard, guided by the [product and design principles](principles.md). Codex compatibility is limited to supported source variants.
 
@@ -10,6 +10,7 @@ Status meanings:
 
 - **Implemented:** present in the current source, subject to the stated limitations.
 - **Workaround available:** usable today through an existing workflow, without a dedicated product control.
+- **Accepted design, not implemented:** selected requirements and architecture with implementation and verification still pending.
 - **Discussed follow-up:** identified desired behavior that has not been implemented.
 - **Outside current scope:** no implementation or delivery commitment in this version.
 
@@ -45,6 +46,7 @@ Core requirements:
 | BRANCH-01 | Explore an edited input through transcript replay or a native Codex branch. | Implemented, with distinct semantics |
 | EXT-01 | Keep tracing capabilities and future agent integrations independently configurable. | Implemented static first-party catalog and narrow services; only Codex ships |
 | EXAMPLE-01 | Maintain an `examples/` folder with a demo for each initial use case, using the local model or a labeled dummy fallback where a model is needed. | Implemented examples; native execution requires a real local session |
+| EXP-01–12 | Preserve experiment evidence outside checkouts, support filesystem-only operation and optional self-hosted MLflow sharing, and regenerate reports from pinned inputs. | Accepted design, not implemented (§15) |
 
 ### 1.1 Raw capture and performance acceptance
 
@@ -549,3 +551,26 @@ On **2026-09-06**, the user moved high-volume service support to [WL-001](backlo
 Scalability remains a desired outcome; high volume alone does not require multi-tenancy, distributed infrastructure, or a language rewrite. The synthetic benchmark does not establish production capacity.
 
 On **2026-09-08**, the user clarified that complete raw collection must always support future inference/calculation and that high service performance is required while prototyping in Python. RAW-01 and PERF-01 (§1.1) record these requirements. High-volume deployment infrastructure remains deferred; efficient implementation and performance measurement apply now.
+
+## 15. Durable experiment storage
+
+**Accepted design, not implemented — 2026-09-25.** Preserve experiment inputs, intermediate results, outputs, and report dependencies independently of Git worktrees. Support multiple machines and teammates through optional self-hosted MLflow. The [experiment storage design](experiment-storage.md) defines the format and architecture. This is a documentation decision, not an installed service, migration, or new CLI/API capability.
+
+All acceptance cases below are **required future verification**, not passing tests. Use synthetic artifacts and an isolated test tracking server; model calls are unnecessary for storage verification.
+
+| ID | Requirement | Acceptance criterion |
+| --- | --- | --- |
+| EXP-01 | Use one durable archive per machine outside all relevant Git checkouts. | Two worktrees resolve the same configured archive; deleting one worktree preserves runs. Invalid roots fail without falling back to the working directory. Separate writable dev databases remain independent. |
+| EXP-02 | Provide filesystem-only and filesystem + MLflow modes using one format. | Record, list, inspect, verify, and regenerate a report without MLflow installed or network access. Switching publication on preserves existing IDs and bytes. |
+| EXP-03 | Connect only explicit experiment producers. | An instrumented synthetic script records a run; ordinary browsing, ingestion, and model calls outside that recorder create no MLflow experiment records. Recording does not execute a model or arbitrary artifact code. |
+| EXP-04 | Preserve complete supplied evidence and every attempt. | Round-trip arbitrary bytes, unknown JSONL records, line endings, prompts, schemas, responses, and intermediate files by SHA-256. Missing files, interrupted writes, and disk exhaustion cannot become successful finalized runs. |
+| EXP-05 | Give runs stable IDs and immutable finalized manifests. | Concurrent runs from different worktrees cannot overwrite each other. Changed content under an existing finalized ID is rejected. Recovery preserves interrupted evidence; corrections create a new run with an explicit relationship. |
+| EXP-06 | Record inputs and transformations precisely. | Manifests identify source artifact hashes, code/environment/configuration, output hashes, metric units and origins, and known provenance gaps. Unknown model/code versions and absent metrics remain unknown, never zero or inferred success. |
+| EXP-07 | Regenerate derived resources from pinned dependencies. | A report consuming two saved runs executes offline with their preserved code/configuration and inputs; its new manifest references both. Missing dependencies or incompatible schemas fail explicitly; no implicit use of latest runs or fresh model calls. |
+| EXP-08 | Publish complete archives through the shared service. | A second machine retrieves a finalized run and all declared input dependencies without access to the producer's filesystem. Downloaded bytes match manifests. Clients use MLflow APIs, not direct database or server-path access. |
+| EXP-09 | Separate execution outcomes from publication outcomes. | Server outage, partial upload, and interrupted fetch preserve local results and expose retryable publication state. Retrying a known mapping reuses it; an ambiguous remote creation blocks for reconciliation rather than blindly creating another run. |
+| EXP-10 | Preserve privacy and isolate optional infrastructure. | Filesystem mode makes no tracking requests. Test authentication failures and an unapproved destination using synthetic data. MLflow credentials never enter recorder-generated manifests; optional clients are not imported by normal tracing startup. |
+| EXP-11 | Migrate explicitly and without data loss. | A dry-run inventory and import preserve all source files and references, detect changed/missing evidence, mark unknown historic provenance, and leave originals intact. A repeat import reuses an identical verified archive or reports a conflict. |
+| EXP-12 | Back up and restore the archive and catalog. | Restore local bundles and the server's metadata, artifacts, and access-control configuration to an isolated destination; verify hashes, dependency resolution, and report inputs. Document the tested backup schedule and recovery window before real-data rollout. |
+
+Scope includes the local recorder/reader, explicit legacy import, publication/retrieval, and a private shared deployment. S3, DVC, distributed scheduling, live model tracing, automatic experiment discovery, multi-tenant SaaS, and deterministic model reruns are outside this first implementation. The [current local-only data policy](development.md#automatic-worktree-data-setup) remains effective until a scoped private-sharing workflow is implemented and documented; this specification does not authorize uploading existing archives.
