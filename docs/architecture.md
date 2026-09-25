@@ -55,3 +55,7 @@ Models use worker threads with configurable timeout, bounded text context, and n
 [Review measurements](architecture-review.md) compare fixed profiles before and after the refactor. They are a small retry workload, not a capacity certification. Representative growing datasets, optional-analysis load, export/tail latency, and numerical budgets remain unmeasured or unagreed. Complete capture cannot be traded away to improve these results.
 
 This is one authenticated shared workspace, with plaintext storage and no tenant isolation. [Correctness gaps](data-quality-gaps.md) remain explicit: inferred input/timing semantics, unsupported-record reporting, conflicting-history corrections, cross-source lineage and reproducible analysis snapshots. Future first-party adapters or profiled component replacements should preserve capture and API contracts. Third-party packaging, RPC workers and larger service infrastructure remain [deferred](backlog.md).
+
+## Planned experiment storage
+
+**Accepted design, not implemented — 2026-09-25.** Explicit experiment scripts will record portable filesystem archives outside Git checkouts, with optional publication to self-hosted MLflow. The shared deployment uses PostgreSQL for MLflow metadata and a server filesystem for artifacts; this does not replace AgentBoard's SQLite Store. The [experiment storage design](experiment-storage.md) owns component boundaries, the artifact contract, synchronization, and migration. [Specification §15](specification.md#15-durable-experiment-storage) owns requirements and acceptance criteria.
