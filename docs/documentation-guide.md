@@ -10,8 +10,8 @@ For all project documentation:
 6. **Show uncertainty.** State unsupported cases and decision impact. Missing evidence is not zero, success, or certainty.
 7. **Preserve decisions.** Flag conflicting requirements and ask for clarification before changing those points. Routine wording and formatting need no approval. Keep deferred wishes separate from current correctness gaps.
 8. **Maintain the evidence trail.** When behavior changes, update affected docs, examples, and relevant tests together. State version/date where material and explain effects on existing data, reimports, and backfills. Label synthetic or redacted examples.
-9. **Verify.** Check links, examples, arithmetic, and implementation consistency. Include private content only when necessary and authorized.
-10. **Consolidate.** Remove superseded or redirect-only documents and update inbound links to the maintained source. Keep substantive dated experiment reports as historical evidence, with current storage/status notes where needed.
+9. **Retire obsolete pages.** Consolidate enduring requirements and evidence into the maintained document, remove completed plans/reviews and pointer-only pages, and update inbound links without leaving redirect stubs. Store experiment artifacts in the archive; keep only dated aggregate observations needed to explain current behavior.
+10. **Verify.** Check links, examples, arithmetic, and implementation consistency. Include private content only when necessary and authorized.
 
 ## Where information belongs
 
@@ -24,9 +24,9 @@ For all project documentation:
 | [Specification](specification.md) | Requirements, status, and acceptance criteria |
 | [Classifier experiment workflow](../cronjob/classifier/README.md) | Classifier scripts/configuration, data formats, commands, artifacts, and verification |
 | [Feature list](features.md) | Mandatory core, optional capability IDs, configuration, and first-party module contract |
-| [Modular feature plan](modular-features-plan.md) | Approved first-party architecture target, Grafana/VS Code/Obsidian lessons, refactor stages, and deferred plugin design |
-| [Architecture](architecture.md) | Components, boundaries, and design choices |
-| [Architecture review](architecture-review.md) | Implemented corrections, verification, measured performance and remaining limits |
+| [Architecture](architecture.md) | Current components, design decisions, dated measurements and performance limits |
+| [Experiment storage](experiment-storage.md) | Archive format/workflow, selected coverage and accepted publication design |
+| [Dataset curation](dataset-curation.md) | Label/duplicate review, embedding configuration, persistence and verification limits |
 | [Data lineage](data-lineage.md) | Exact mappings and metric semantics |
 | [Data-quality gaps](data-quality-gaps.md) | Current correctness concerns, evidence, and verification cases |
 | [Backlog](backlog.md) | Deferred capabilities and future wishes |

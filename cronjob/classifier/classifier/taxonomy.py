@@ -5,4 +5,13 @@ Changing the rubric requires an explicit taxonomy version and dataset revision.
 """
 
 TAXONOMY_VERSION = "session-purpose-v1"
-CATEGORIES = ("writing", "coding", "bug-fixing", "research", "analysis", "creative-media", "guidance", "other")
+CATEGORIES = (
+    "writing",
+    "coding",
+    "bug-fixing",
+    "research",
+    "analysis",
+    "creative-media",
+    "guidance",
+    "other",
+)

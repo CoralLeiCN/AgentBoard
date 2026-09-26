@@ -11,7 +11,10 @@ dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1", "opentelemetry-proto>=1
 
 [project.optional-dependencies]
 models = ["openai>=1.60,<3"]
+embeddings = ["sentence-transformers>=5,<6", "numpy>=1.26,<3"]
+remote-embeddings = ["httpx>=0.27,<1", "numpy>=1.26,<3"]
 dev = [
+    "numpy>=1.26,<3",
     "pytest>=8,<10",
     "httpx>=0.27,<1",
     "httpx2>=2,<3",
@@ -39,6 +42,9 @@ packages = ["backend/agentboard"]
 "frontend/usage.js" = "agentboard/static/usage.js"
 "frontend/dashboard.js" = "agentboard/static/dashboard.js"
 "frontend/style.css" = "agentboard/static/style.css"
+"frontend/curation.html" = "agentboard/static/curation.html"
+"frontend/curation.js" = "agentboard/static/curation.js"
+"frontend/curation.css" = "agentboard/static/curation.css"
 
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]

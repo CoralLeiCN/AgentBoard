@@ -1,10 +1,10 @@
 # AgentBoard backlog and wishlist
 
-Updated: 2026-09-25
+Updated: 2026-09-26
 
 Future capabilities for review, not initial-release acceptance criteria or delivery commitments. Current requirements live in the [specification](specification.md); current correctness concerns in the [gap register](data-quality-gaps.md).
 
-The separate [experiment follow-ups](#experiment-storage-and-classification-follow-ups) track delivered filesystem work and pending shared-storage implementation and classifier execution; they do not defer its requirements to the wishlist.
+The separate [experiment follow-ups](#experiment-storage-and-classification-follow-ups) track remaining shared-storage implementation and human dataset review; they do not defer its requirements to the wishlist.
 
 **Clarified 2026-09-08:** the [principles](principles.md) require high performance and complete raw collection throughout the Python prototype; [RAW-01/PERF-01](specification.md#11-raw-capture-and-performance-acceptance) define acceptance. WL-001 defers larger deployment capacity and infrastructure. Efficient implementation and performance measurement apply now.
 
@@ -66,20 +66,23 @@ Move dataset version storage to Hugging Face in a future phase while retaining e
 
 Before implementation, define repository ownership/access, immutable revision mapping, subset/schema compatibility, and a scoped sharing policy for selected evidence. Verify source bytes and dependency resolution across migration, retain local evidence required for offline reports, and preserve existing result/input hashes. Do not use a moving branch as a reproducibility reference or silently redact raw sources during transfer. Test the adapter and restoration with synthetic artifacts before selected real data.
 
+## Third-party extensions
+
+Deferred until a concrete external integration cannot reasonably ship with AgentBoard. Any proposal must cover package identity/versioning, permissions, installation/removal, recovery, observability and support. The default design direction is supervised separate-process execution with a small versioned RPC contract, cancellation and health checks; no implementation is selected. Core would retain database, migrations, auth, lifecycle and UI ownership. Compare worker layouts and coarse operations using performance and threat requirements before adding isolation overhead.
+
 ## Experiment storage and classification follow-ups
 
-Implementation status and pending work, updated 2026-09-26. This register does not schedule classifier runs. Specification [§15](specification.md#15-durable-experiment-storage) and [§16](specification.md#16-supervised-classifier-comparison) own storage and classifier acceptance criteria; the [storage design](experiment-storage.md#migration-and-implementation-sequence) owns storage implementation order.
+The filesystem recorder, one-time migration and curation module are implemented. The [selected coverage report](experiment-storage.md#dataset-and-classification-coverage) has complete saved results for five independent classifiers; the old missing-target execution item is complete for that selection. These entries track remaining work and do not schedule models or assign human labels.
 
-| ID | Follow-up | Status / completion evidence |
-| --- | --- | --- |
-| EXP-TODO-01 | Implement the filesystem recorder/reader at the agreed data home, with `experiments/{datasets,runs,staging,sync}/` and project identity in metadata. | Implemented with synthetic regressions and an offline copy/restore example. Baseline/dev databases remain separate. See the [filesystem interface](experiment-storage.md#filesystem-commands-and-producer-api). |
-| EXP-TODO-02 | Import the one current combined dataset and selected historical runs; derive per-model pending coverage. | Completed 2026-09-25: one combined dataset and eight legacy bundles migrated; coverage and verification receipts saved. All 5,484 selected files verified, originals unchanged, repeat import reused all nine IDs. Migration scripts and the legacy import command were subsequently removed; no compatibility layer is maintained. See the [migration audit](experiment-storage.md#local-migration-audit). |
-| EXP-TODO-03 | Run classifiers later on missing or changed-input targets in the 247-session, 1,431-turn dataset. | Pending experiment execution. Preserve existing outputs; the [dated coverage audit](experiment-storage.md#current-dataset-and-pending-classification) identifies 772 missing/changed-input turns per configuration, plus one invalid GPT-5.6 Luna batched result: 773 distinct turns pending across the six configurations. Select model/configuration and explicit target subsets, then save new runs and refreshed coverage reports. No execution or result is implied by this entry. |
-| EXP-TODO-04 | Add the optional private MLflow service, publisher/fetcher, and tested backup/restore. | Accepted, not implemented. Verify complete dependency transfer, separate publication state, retry/conflict handling, access policy, and isolated restoration before selected real-data rollout. |
-| EXP-TODO-05 | Train and evaluate supervised turn-purpose baselines against GPT. | The independent [classifier workflow](../cronjob/classifier/README.md) is implemented. Reference-label selection/adjudication and real-data training/comparison remain pending experiment execution; no accuracy result is implied. |
+| Follow-up | Status / acceptance source |
+| --- | --- |
+| Private MLflow service, publisher/fetcher and operational backup/restore | Accepted, not implemented. [EXP-08–10 and EXP-12](specification.md#15-durable-experiment-storage) require complete dependency transfer, separate publication state, retry/conflict handling, access policy and verified restoration. |
+| Supervised turn-purpose baselines against GPT | Independent [classifier workflow](../cronjob/classifier/README.md) implemented under [CLS-01–08](specification.md#16-supervised-classifier-comparison). Reference-label selection/adjudication and real-data training/comparison remain pending experiment execution; no accuracy result is implied. |
+| Human adjudication of disagreements and suggested duplicates | Review module implemented under [CUR-01–05 and DEDUP-01–05](specification.md#17-dataset-curation); labels become verified and turns become removed only through explicit attributed decisions. |
+| Live remote embedding integration verification | Adapter implemented and covered with mock HTTP. The required private endpoint refused connection on 2026-09-26; rerun the isolated synthetic test when it supports embeddings. [Verification limits](dataset-curation.md#verification-and-limits). |
+| Large-scale similarity indexing and automatic review transfer | Deferred. Current cosine comparison uses matrix blocks, and changed inputs require a new workspace without automatic verification transfer. |
 
-These tasks do not relocate the shared baseline/dev databases or fix split-session normalization. Existing source evidence and historical runs remain preserved. WL-004 is a later dataset-storage migration, not a prerequisite for local recording or pending classification work.
-
+Future classifier runs remain explicit experiments when new inputs/configurations need coverage. They are not storage migration or automatic curation work. These follow-ups do not relocate baseline/dev databases or resolve split-session normalization. WL-004 is a separate future dataset-storage adapter.
 ## Review process
 
 Review date: **not scheduled**; no automatic reminder exists. At review, retain, investigate, accept, or drop each item. Log the decision and update the specification only for accepted scope. Throughput, deadlines, and priorities remain open until agreed.
@@ -97,3 +100,5 @@ Human/context/internal-input correctness remains tracked in [specification §7](
 | 2026-09-25 | Record future Hugging Face dataset version storage as WL-004; keep filesystem recording first and optional MLflow publication separate. |
 | 2026-09-25 | Implemented filesystem storage and completed the subsequently requested local migration. Preserve original evidence and partial coverage; defer model execution and remote publication. The validity-aware audit adds one pending GPT-5.6 Luna result to the earlier input-reuse count. |
 | 2026-09-25 | Retire legacy filesystem migration scripts and the import command after the verified migration. Maintain the recorder/reader and coverage reports; retain immutable migrated evidence and the audit receipt. |
+| 2026-09-26 | The selected report now contains complete results for five independent classifiers. Keep historical subset results unchanged; human verification remains separate from model coverage. |
+| 2026-09-26 | Implement curation with mixed inferred/verified labels, full-turn duplicate review, reversible removal and configurable local/remote embedding cosine. Retire lexical similarity and earlier workspace compatibility. |

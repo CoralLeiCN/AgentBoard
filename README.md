@@ -6,10 +6,11 @@ Import Codex sessions and inspect LLM/tool timing in a mandatory browser dashboa
 | --- | --- |
 | [Principles](docs/principles.md) | Product intent, complete raw preservation, modularity, performance, and evidence |
 | [Configurable features](docs/features.md) | Required core, optional capabilities, defaults, configuration, internal module contract |
-| [First-party modular feature plan](docs/modular-features-plan.md) | VS Code/Obsidian lessons, approved architecture target, staged refactor, deferred plugins |
+| [Architecture](docs/architecture.md) | Current component ownership, design decisions, performance evidence and limits |
 | [Specification](docs/specification.md) | Requirements, status, acceptance criteria |
 | [Classifier experiments](cronjob/classifier/README.md) | Independent BERT-like and embedding/LightGBM training, inference and saved-GPT comparison |
-| [Experiment storage design](docs/experiment-storage.md) | Filesystem archive and offline reports; optional MLflow publication remains planned |
+| [Experiment storage](docs/experiment-storage.md) | Filesystem archive, pinned coverage reports and planned MLflow publication |
+| [Dataset curation](docs/dataset-curation.md) | Human label review, configurable embedding cosine, full-turn duplicate review and exports |
 | [Data lineage](docs/data-lineage.md) | Raw mappings, timing, reimports, evidence limits |
 | [Data-quality gaps](docs/data-quality-gaps.md) | Correctness concerns and proposed checks |
 | [Backlog](docs/backlog.md) | Future capacity, languages, and integrations |
@@ -73,6 +74,8 @@ The following capabilities are available when their [feature IDs](docs/features.
 - Versioned REST API, cursor-paginated event/input queries, and streaming JSONL exports. [Interactive API documentation](http://127.0.0.1:4318/docs) and `/openapi.json` describe routes and request parameters.
 - Optional local-model classification and conversation replay, plus native Codex branch plans and a CLI executor.
 - Validated feature allowlists and a static first-party catalog for the HTTP service and CLI. Only the Codex agent adapter ships.
+
+**Dataset curation:** review archived multi-model disagreements, promote inferred labels to verified through human decisions, and inspect full turns before keeping/removing input-similar duplicates. Similarity uses configurable local or remote embeddings and cosine only; [setup, formats and limits](docs/dataset-curation.md).
 
 **Workspace usage:** open **Usage dashboard** for date-range totals, daily/model breakdowns, estimated API value, and metadata/tag filters. Edit persistent tags on each session. [Dashboard guide and calculation limits](docs/usage-dashboard.md).
 
@@ -202,7 +205,7 @@ The app factory also accepts `Settings` for the body limit, ingestion concurrenc
 
 ## Efficiency and deployment boundaries
 
-The [architecture review](docs/architecture-review.md) records the implemented changes, fixture measurements, verification and remaining performance gaps.
+The [architecture](docs/architecture.md) records current component boundaries and dated fixture measurements with their performance limits.
 
 SQLite WAL, indexed queries, batched transactions, streaming file import/export, bounded HTTP bodies, and a bounded ingest concurrency keep the local runtime small. Core captures original payloads with SQLite `FULL` commits before normalization; derived writes retain `NORMAL` semantics. A worker thread handles each import/model request so the HTTP event loop stays responsive. There are no background polling loops and no agent-side monkey patches. The static frontend adds no build/runtime dependency. Persistent IDs deduplicate retried OTLP spans and imports.
 
@@ -220,4 +223,4 @@ For real local development data, [seed a shared baseline and checkpoint](docs/de
 
 For existing OTel data affected by numeric worker IDs appearing as sessions, back up the database and run `uv run agentboard repair-otlp-sessions`. The repair preserves recorded spans and event IDs, associates spans using unambiguous conversation evidence, and leaves unresolved activity in trace buckets. See [OTLP correlation rules](docs/data-lineage.md#9-live-telemetry-mappings). Timeline now displays internal timed spans as well as LLM/tool/wait operations.
 
-The **Sessions** view counts observed/imported conversation identities. **Unattributed telemetry** holds background traces with no unambiguous conversation association. The API defaults to sessions; use `/api/v1/sessions?identity_kind=unattributed` or `identity_kind=all` to include these records. See the [grouping review](docs/session-grouping-review.md).
+The **Sessions** view counts observed/imported conversation identities. **Unattributed telemetry** holds background traces with no unambiguous conversation association. The API defaults to sessions; use `/api/v1/sessions?identity_kind=unattributed` or `identity_kind=all` to include these records. See [identity and correlation rules](docs/data-lineage.md#9-live-telemetry-mappings).

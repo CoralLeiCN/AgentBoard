@@ -2,7 +2,7 @@
 
 Established: 2026-09-08
 
-AgentBoard helps people understand coding-agent behavior through preserved evidence and useful analysis. These product intentions and design principles guide architecture, implementation, and review. They state the required direction; implementation status and acceptance criteria live in the [specification](specification.md), with refactor steps in the [modular feature plan](modular-features-plan.md).
+AgentBoard helps people understand coding-agent behavior through preserved evidence and useful analysis. These product intentions and design principles guide architecture, implementation, and review. They state the required direction; implementation status and acceptance criteria live in the [specification](specification.md), with current ownership decisions in the [architecture](architecture.md).
 
 ## Preserve complete raw data
 

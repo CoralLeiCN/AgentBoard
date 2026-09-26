@@ -26,7 +26,7 @@ Numbered examples run independently, import synthetic fixtures idempotently, and
 | Frontend visualization | Open [the dev UI](http://127.0.0.1:4319), choose **Load demo**, then Timeline / User inputs / All events |
 | Configurable tracing | `agentboard features` lists the catalog; an empty allowlist keeps core browsing/UI, and `features = ["import"]` adds complete capture and normalized rollout import. See [configuration examples](../docs/features.md#configuration) |
 | Retained capture inspection/reprocessing | `agentboard captures`; `agentboard capture-export ID > payload.bin`; `agentboard reprocess ID`; [semantics](../docs/data-lineage.md#35-raw-archive-and-export) |
-| Feature startup and concurrent import/read probe | `uv run python examples/feature_benchmark.py --requests 20`; [measurement limits](../docs/architecture-review.md) |
+| Feature startup and concurrent import/read probe | `uv run python examples/feature_benchmark.py --requests 20`; [measurement limits](../docs/architecture.md#measurements) |
 | Filesystem experiment recording, coverage and restore | `uv run python examples/experiment_storage.py`; [standalone synthetic example](experiment_storage.py), with temporary archives and no server/model calls |
 | BERT-like and embedding/LightGBM classifier training | [Preparation, training, inference and saved-GPT comparison commands](../cronjob/classifier/README.md#commands); per-model training scripts with in-script dataclasses; local model directories and optional ML packages required, no dev server |
 | Reproducible storage efficiency probe | `uv run python examples/benchmark.py --events 10000` |
@@ -39,7 +39,7 @@ A separate [real Codex excerpt](fixtures/codex-real-excerpt.md) contains 13 revi
 
 For a real example with **Waiting for user**, use `real-input-desktop`: it shows one estimated wait of **45.3 min**. The CLI and reviewer samples have none for different reasons; follow the [inspection walkthrough](fixtures/input-origin-real/README.md#inspect-locally). Between-turn waits are inferred from timestamps, without an explicit raw wait record.
 
-The two-turn fixture includes overlapping tools, a failed test, a patch, and a passing suite. Expected tool sum: **17,500 ms**; active union: **16,400 ms**; LLM gap estimate: **38,380 ms**; between-turn wait: **31,900 ms**. Its command text is never executed. The UI packages an identical copy.
+The two-turn fixture includes overlapping tools, a failed test, a patch, and a passing suite. Expected tool sum: **17,500 ms**; active union: **16,400 ms**; LLM gap estimate: **38,380 ms**; between-turn wait: **31,900 ms**. Its command text is never executed. The UI demo uses the same scenario with additional synthetic token usage and its own session ID.
 
 The native resume example prints a reviewable plan. For an actual continuation, import a real local Codex session and run:
 
@@ -52,7 +52,7 @@ This makes a new read-only Codex branch; it does not restore the repository to i
 
 For exact Codex source export after importing a file, run `agentboard export SESSION_ID --raw > rollout.jsonl`. List source versions with `GET /api/v1/sessions/SESSION_ID/raw-imports`, then select one using `--raw --import-id ID`. Older imports require reimporting their original files; normalized event export cannot recover omitted source fields.
 
-The synthetic demo also exposes explicit parallel labels: `GET /api/v1/sessions/demo-codex-checkout/parallel-groups?source=codex_jsonl` returns one two-tool group with peak concurrency 2 and `overlap_ms=1100`. Open Timeline to inspect **Parallel P1**, then filter for `cat src` to see its partial-membership label.
+The synthetic demo also exposes explicit parallel labels: `GET /api/v1/sessions/demo-codex-checkout-usage-v1/parallel-groups?source=codex_jsonl` returns one two-tool group with peak concurrency 2 and `overlap_ms=1100`. Open Timeline to inspect **Parallel P1**, then filter for `cat src` to see its partial-membership label.
 
 To inspect input attribution using synthetic data in the isolated dev dashboard:
 
@@ -62,3 +62,9 @@ uv run agentboard --config config/dev.toml serve
 ```
 
 Open [the dev dashboard](http://127.0.0.1:4319) in Codex’s internal browser. `demo-context-inputs` has **2 human-attributed prompts**, **2 injected context records** under All events, and **6,000 ms** inferred waiting time. The context at second 4 does not end the wait from second 3 to the human prompt at second 9. `demo-internal-reviewer` has **0 human prompts/waits**, keeps its context and internal requests inspectable, and links to `demo-context-inputs` as its recorded parent. Branch controls appear only on the human-attributed inputs. These classifications are inferred; [coverage and reimport limits](../docs/data-lineage.md#341-input-attribution) apply.
+
+## Dataset label and duplicate review
+
+[dataset_curation.py](dataset_curation.py) creates a persistent synthetic archived dataset and review workspace with no model calls. Run `uv run python examples/dataset_curation.py --data-home /private/tmp/agentboard-curation-demo`, then use the printed review command. Inspect disagreements, verify a label, keep/remove/restore a suggested duplicate and export a mixed-status dataset. See the [curation workflow](../docs/dataset-curation.md#use-the-module).
+
+For semantic duplicate suggestions on an archived dataset, install `--extra embeddings` and use `agentboard experiments curate --current`. This performs local embedding inference with the pinned cached model; the synthetic demo uses hand-authored vectors and remains model-free. Remote endpoints can use the separate `--extra remote-embeddings` dependency group and `--embedding-provider remote`. See [cosine configuration and input handling](../docs/dataset-curation.md#configurable-embedding-providers).

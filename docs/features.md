@@ -2,6 +2,8 @@
 
 Implemented 2026-09-08. AgentBoard always serves its dashboard and core session API. One process-wide allowlist selects shipped first-party capabilities for HTTP, CLI and UI. Restart after changing it. [Principles](principles.md) require complete raw capture from every configured source independently of analysis and inspection.
 
+[Dataset curation](dataset-curation.md) is a separate optional experiment command and loopback review application. It uses the configured archive, not the trace feature allowlist or database; normal tracing startup does not import its services.
+
 ## Feature list
 
 Mandatory core owns configuration, storage/migrations, complete capture, normalization correctness, session/event browsing and search, persistent session tags, source selection, normalized inspection, basic timing statistics, health, lifecycle and the bundled UI. `features = []` browses an existing dataset without starting unconfigured collection.
@@ -76,8 +78,10 @@ The [static catalog](../backend/agentboard/features/catalog.py) defines frozen I
 
 Core validates configuration, opens storage and builds enabled services. Feature factories return `APIRouter` values using only their [named service operations](../backend/agentboard/services.py). Core validates method/path ownership and owns middleware, mounts, lifecycle and UI placement. No feature receives a raw Store, database connection, app or runtime. These internal interfaces support trusted first-party code; they are not an isolation boundary or external compatibility promise.
 
-The experimental `plugins` setting and Python `register(registry)` hook have been removed. Delete `plugins` from TOML and unset `AGENTBOARD_PLUGINS`; nonempty legacy environment settings fail explicitly. No package discovery, hot loading or third-party module execution is supported. [Architecture and deferred design](modular-features-plan.md).
+The experimental `plugins` setting and Python `register(registry)` hook have been removed. Delete `plugins` from TOML and unset `AGENTBOARD_PLUGINS`; nonempty legacy environment settings fail explicitly. No package discovery, hot loading or third-party module execution is supported. [Architecture decisions](architecture.md#design-decisions) explain the retained boundaries.
+
+Core-owned UI containers declare their required capabilities with `data-feature`, remain hidden until configuration loads, and guard handlers as well as requests. Combined operations require every relevant ID; disabling a selected view returns to a valid core view. Catalog declarations perform no I/O, service initialization or background work. Core constructs services once and closes resources after normal operation or partial startup failure.
 
 ## Verification
 
-[Feature tests](../backend/tests/test_features.py) cover independent capabilities, HTTP/OpenAPI boundaries and skipped work; [catalog/CLI tests](../backend/tests/test_feature_registry.py) cover validation, lazy imports, lifecycle, UI IDs and disabled commands. [Capture tests](../backend/tests/test_capture.py) cover byte completeness, failures, replay of retained data and upgrades; [reimport tests](../backend/tests/test_feature_reimports.py) cover evidence across lineage settings. [Frontend tests](../frontend/tests/features.test.cjs) verify selective controls and requests. [Review evidence](architecture-review.md) records browser profiles and measurement limits.
+[Feature tests](../backend/tests/test_features.py) cover independent capabilities, HTTP/OpenAPI boundaries and skipped work; [catalog/CLI tests](../backend/tests/test_feature_registry.py) cover validation, lazy imports, lifecycle, UI IDs and disabled commands. [Capture tests](../backend/tests/test_capture.py) cover byte completeness, failures, replay of retained data and upgrades; [reimport tests](../backend/tests/test_feature_reimports.py) cover evidence across lineage settings. [Frontend tests](../frontend/tests/features.test.cjs) verify selective controls and requests. The [testing guide](testing.md#browser-checks) defines browser profiles; [measurements](architecture.md#measurements) retain their workload and performance limits.

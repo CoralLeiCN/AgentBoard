@@ -15,7 +15,7 @@ The [read model](../backend/agentboard/unified.py) reads normalized events witho
 
 For example, a rollout call from 00:00:00–00:00:05 and a same-turn item from 00:00:01–00:00:09 with an exact unique call ID display once using the item's interval. The inspector retains both intervals and their source records. Different IDs retain two rows even if their names and timestamps match.
 
-The local example session `01a07416-7481-7693-9a48-c08c7d09d324` has rollout `call_…` IDs and item `exec-…` IDs without an explicit bridge. Its overlapping command and file edit remain labeled item rows; the unified view does not claim to have matched them to rollout calls.
+Different identifier namespaces, such as rollout `call_…` IDs and item `exec-…` IDs without an explicit bridge, remain unmatched even when commands overlap.
 
 ## Timing, groups and inspection
 

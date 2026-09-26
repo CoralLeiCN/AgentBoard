@@ -32,10 +32,18 @@ from train_lightgbm import LightGBMConfig
 
 
 def synthetic_turns(n=24):
-    return [{"index": i, "original_codex_session_id": f"session-{i}", "original_codex_turn_id": f"turn-{i}",
-             "classification_input_sha256": f"{i:064x}", "previous_turn_index": None,
-             "messages": [{"role": "user", "content": f"{'write' if i % 2 else 'code'} synthetic task {i}"}],
-             "unknown_source_field": {"preserve": True}} for i in range(n)]
+    return [
+        {
+            "index": i,
+            "original_codex_session_id": f"session-{i}",
+            "original_codex_turn_id": f"turn-{i}",
+            "classification_input_sha256": f"{i:064x}",
+            "previous_turn_index": None,
+            "messages": [{"role": "user", "content": f"{'write' if i % 2 else 'code'} synthetic task {i}"}],
+            "unknown_source_field": {"preserve": True},
+        }
+        for i in range(n)
+    ]
 
 
 def fixture_dataset(tmp_path):
@@ -43,9 +51,17 @@ def fixture_dataset(tmp_path):
     labels = tmp_path / "labels.jsonl"
     write_json(turns, synthetic_turns())
     rows = turn_inputs(read_rows(turns))
-    write_rows(labels, [{**r, "category": "coding" if i % 2 else "writing",
-                         "label_source": {"kind": "human", "name": "synthetic-reviewer"}}
-                        for i, r in enumerate(rows)])
+    write_rows(
+        labels,
+        [
+            {
+                **r,
+                "category": "coding" if i % 2 else "writing",
+                "label_source": {"kind": "human", "name": "synthetic-reviewer"},
+            }
+            for i, r in enumerate(rows)
+        ],
+    )
     output = tmp_path / "dataset"
     prepare(turns, labels, output)
     return output
@@ -97,14 +113,17 @@ def test_unlabeled_bridges_still_prevent_leakage():
     turns[1]["group_id"] = "a"
     turns[1]["previous_turn_index"] = 2
     inputs = turn_inputs(turns)
-    rows = [{**r, "category": "coding" if i % 2 else "writing"}
-            for i, r in enumerate(inputs) if r["turn_id"] != "turn-1"]
+    rows = [
+        {**r, "category": "coding" if i % 2 else "writing"}
+        for i, r in enumerate(inputs)
+        if r["turn_id"] != "turn-1"
+    ]
     parts = split_rows(rows, grouping_rows=inputs)
     owner = {r["turn_id"]: name for name, part in parts.items() for r in part}
     assert owner["turn-0"] == owner["turn-2"]
 
 
-@pytest.mark.parametrize("ratios", [(1, 0, 0), (0.7, 0.2, 0.2), (float('nan'), 0.2, 0.2)])
+@pytest.mark.parametrize("ratios", [(1, 0, 0), (0.7, 0.2, 0.2), (float("nan"), 0.2, 0.2)])
 def test_invalid_splits_fail(ratios):
     with pytest.raises(ValueError, match="ratios"):
         split_rows([], ratios=ratios)
@@ -116,16 +135,19 @@ def test_small_eight_class_dataset_keeps_coverage_with_flexible_splits(tmp_path)
     write_json(turns, synthetic_turns(10))
     inputs = turn_inputs(read_rows(turns))
     categories = [*CATEGORIES, "coding", "writing"]
-    rows = [{**row, "category": category,
-             "label_source": {"kind": "human", "name": "synthetic-reviewer"}}
-            for row, category in zip(inputs, categories)]
+    rows = [
+        {**row, "category": category, "label_source": {"kind": "human", "name": "synthetic-reviewer"}}
+        for row, category in zip(inputs, categories)
+    ]
     write_rows(labels, rows)
     output = tmp_path / "dataset"
     meta = prepare(turns, labels, output)
     parts = {name: read_rows(output / f"{name}.jsonl") for name in ("train", "validation", "test")}
     assert {name: len(part) for name, part in parts.items()} == {"train": 8, "validation": 1, "test": 1}
     assert {row["category"] for row in parts["train"]} == set(CATEGORIES)
-    assert sorted(row["turn_id"] for part in parts.values() for row in part) == sorted(r["turn_id"] for r in rows)
+    assert sorted(row["turn_id"] for part in parts.values() for row in part) == sorted(
+        r["turn_id"] for r in rows
+    )
     assert len({row["session_id"] for part in parts.values() for row in part}) == 10
     assert meta["requested_ratios"] == [0.7, 0.15, 0.15]
     assert meta["actual_ratios"] == {"train": 0.8, "validation": 0.1, "test": 0.1}
@@ -134,16 +156,19 @@ def test_small_eight_class_dataset_keeps_coverage_with_flexible_splits(tmp_path)
 
 
 def test_split_rejects_genuinely_impossible_training_coverage():
-    rows = [{**row, "category": category}
-            for row, category in zip(turn_inputs(synthetic_turns(8)), CATEGORIES)]
+    rows = [
+        {**row, "category": category} for row, category in zip(turn_inputs(synthetic_turns(8)), CATEGORIES)
+    ]
     with pytest.raises(ValueError, match="isolated splits"):
         split_rows(rows)
 
 
 def test_split_checks_feasibility_when_sampled_orders_miss_valid_partitions(monkeypatch):
     inputs = turn_inputs(synthetic_turns(10))
-    rows = [{**row, "category": category, "session_id": "session-0" if i < 8 else f"session-{i}"}
-            for i, (row, category) in enumerate(zip(inputs, [*CATEGORIES, "coding", "writing"]))]
+    rows = [
+        {**row, "category": category, "session_id": "session-0" if i < 8 else f"session-{i}"}
+        for i, (row, category) in enumerate(zip(inputs, [*CATEGORIES, "coding", "writing"]))
+    ]
     # Every sampled ordering reserves the only group containing all eight classes
     # for a holdout. A deterministic feasibility check must still find the solution.
     monkeypatch.setattr(classifier_data.random.Random, "shuffle", lambda self, order: None)
@@ -177,15 +202,31 @@ def test_pseudo_labels_are_explicit_and_pending_rows_are_retained(tmp_path):
     write_rows(tmp_path / "pseudo.jsonl", labels)
     with pytest.raises(ValueError, match="allow-gpt-labels"):
         prepare(tmp_path / "turns.json", tmp_path / "pseudo.jsonl", tmp_path / "pseudo")
-    meta = prepare(tmp_path / "turns.json", tmp_path / "pseudo.jsonl", tmp_path / "pseudo", allow_gpt_labels=True)
+    meta = prepare(
+        tmp_path / "turns.json", tmp_path / "pseudo.jsonl", tmp_path / "pseudo", allow_gpt_labels=True
+    )
     assert meta["labeled_count"] == 22 and meta["pending_count"] == 2
-    assert {r["status"] for r in read_rows(tmp_path / "pseudo/pending.jsonl")} == {"invalid_label", "missing_label"}
+    assert {r["status"] for r in read_rows(tmp_path / "pseudo/pending.jsonl")} == {
+        "invalid_label",
+        "missing_label",
+    }
 
 
 def gpt_fixture():
     turn = synthetic_turns(1)[0]
-    return {"model": "synthetic-gpt", "reasoning_effort": "low", "classifications": [
-        {**turn, "model": "synthetic-gpt", "reasoning_effort": "low", "category": "coding", "reason": "Synthetic"}]}
+    return {
+        "model": "synthetic-gpt",
+        "reasoning_effort": "low",
+        "classifications": [
+            {
+                **turn,
+                "model": "synthetic-gpt",
+                "reasoning_effort": "low",
+                "category": "coding",
+                "reason": "Synthetic",
+            }
+        ],
+    }
 
 
 def test_gpt_adapters_preserve_invalid_and_reject_mixed_configuration():
@@ -198,8 +239,10 @@ def test_gpt_adapters_preserve_invalid_and_reject_mixed_configuration():
     with pytest.raises(ValueError, match="Mixed"):
         import_gpt(value)
     row = gpt_fixture()["classifications"][0]
-    batched = {"experiment": {"models": [{"model": "synthetic-gpt", "reasoning_effort": "low"}]},
-               "turn_results": [{**row, "classifications": {"synthetic-gpt": row}}]}
+    batched = {
+        "experiment": {"models": [{"model": "synthetic-gpt", "reasoning_effort": "low"}]},
+        "turn_results": [{**row, "classifications": {"synthetic-gpt": row}}],
+    }
     assert import_gpt(batched, model="synthetic-gpt")[0]["category"] == "coding"
     with pytest.raises(ValueError, match="Select exactly"):
         import_gpt(batched)
@@ -213,7 +256,11 @@ def test_comparison_preserves_denominators_and_uses_common_subset(tmp_path):
     partial[0]["input_sha256"] = "f" * 64
     report = compare(targets, {"bert": full, "gpt": partial})
     assert report["requested"] == len(targets) and report["paired_count"] == len(targets) - 2
-    assert report["classifiers"]["gpt"]["coverage"] == {"changed_input": 1, "available": len(targets)-2, "missing": 1}
+    assert report["classifiers"]["gpt"]["coverage"] == {
+        "changed_input": 1,
+        "available": len(targets) - 2,
+        "missing": 1,
+    }
     assert report["classifiers"]["bert"]["paired_metrics"]["accuracy"] == 1
     assert report["interpretation"] == "accuracy"
     pseudo = [{**r, "label_source": {"kind": "gpt", "name": "teacher"}} for r in targets]
@@ -227,12 +274,14 @@ def test_comparison_preserves_denominators_and_uses_common_subset(tmp_path):
 
 def test_metrics_known_confusion_and_invalid_probabilities(tmp_path):
     result = metrics(["coding", "coding", "writing"], ["coding", "writing", "writing"])
-    assert result["accuracy"] == 2/3
-    assert result["macro_f1"] == pytest.approx((2/3 + 2/3) / 8)
+    assert result["accuracy"] == 2 / 3
+    assert result["macro_f1"] == pytest.approx((2 / 3 + 2 / 3) / 8)
     data = fixture_dataset(tmp_path)
     targets = read_rows(data / "test.jsonl")
-    rows = [{**r, "configuration": {"model": "bad"}, "probabilities": dict.fromkeys(CATEGORIES, float("nan"))}
-            for r in targets]
+    rows = [
+        {**r, "configuration": {"model": "bad"}, "probabilities": dict.fromkeys(CATEGORIES, float("nan"))}
+        for r in targets
+    ]
     assert compare(targets, {"bad": rows})["classifiers"]["bad"]["coverage"] == {"invalid": len(targets)}
 
 
@@ -242,16 +291,45 @@ def test_cli_is_offline_and_does_not_create_trace_database(tmp_path):
     write_rows(tmp_path / "predictions.jsonl", rows)
     command = [sys.executable, "-S", "-m", "classifier"]
     environment = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[1])}
-    result = subprocess.run(command + ["compare", "--dataset", str(data), "--prediction",
-                                      f"dummy={tmp_path / 'predictions.jsonl'}", "--output", str(tmp_path / "report.json")],
-                            cwd=tmp_path, env=environment, capture_output=True, text=True)
+    result = subprocess.run(
+        command
+        + [
+            "compare",
+            "--dataset",
+            str(data),
+            "--prediction",
+            f"dummy={tmp_path / 'predictions.jsonl'}",
+            "--output",
+            str(tmp_path / "report.json"),
+        ],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
     assert result.returncode == 0, result.stderr
     assert not list(tmp_path.glob("*.db"))
     assert read_json(tmp_path / "report.json")["paired_count"] == len(rows)
-    assert subprocess.run(command + ["--help"], env=environment, cwd=tmp_path, capture_output=True).returncode == 0
-    result = subprocess.run(command + ["prepare", "--turns", str(tmp_path / "turns.json"), "--labels",
-                                      str(tmp_path / "labels.jsonl"), "--output", str(tmp_path / "from-cli")],
-                            env=environment, cwd=tmp_path, capture_output=True, text=True)
+    assert (
+        subprocess.run(command + ["--help"], env=environment, cwd=tmp_path, capture_output=True).returncode
+        == 0
+    )
+    result = subprocess.run(
+        command
+        + [
+            "prepare",
+            "--turns",
+            str(tmp_path / "turns.json"),
+            "--labels",
+            str(tmp_path / "labels.jsonl"),
+            "--output",
+            str(tmp_path / "from-cli"),
+        ],
+        env=environment,
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "from-cli/test.jsonl").read_bytes() == (data / "test.jsonl").read_bytes()
 
@@ -266,9 +344,17 @@ def test_record_complete_evidence_and_restore(tmp_path):
     predictions = [{**r, "configuration": {"model": "synthetic"}} for r in targets]
     write_rows(workspace / "predictions.jsonl", predictions)
     expected = compare(targets, {"synthetic": predictions})
-    result = record_workspace(SimpleNamespace(directory=workspace, data_home=tmp_path / "archive",
-                                              archive_config=None, references=None, project="synthetic",
-                                              experiment="classifiers"))
+    options = SimpleNamespace(
+        directory=workspace,
+        data_home=tmp_path / "archive",
+        archive_config=None,
+        references=None,
+        project="synthetic",
+        experiment="classifiers",
+    )
+    before_options = vars(options).copy()
+    result = record_workspace(options)
+    assert vars(options) == before_options
     archive = Archive(tmp_path / "archive")
     restored = tmp_path / "restored"
     shutil.copytree(archive.home, restored)
@@ -285,11 +371,24 @@ def test_record_complete_evidence_and_restore(tmp_path):
     assert not (bundle / "source/backend").exists()
     assert not (bundle / "source/frontend").exists()
     result = subprocess.run(
-        [sys.executable, "-S", "-m", "classifier", "compare",
-         "--dataset", str(bundle / "workspace/dataset"), "--prediction",
-         f"synthetic={bundle / 'workspace/predictions.jsonl'}", "--output", str(tmp_path / "regenerated.json")],
-        env={**os.environ, "PYTHONPATH": str(bundle / "source")}, cwd=tmp_path,
-        capture_output=True, text=True)
+        [
+            sys.executable,
+            "-S",
+            "-m",
+            "classifier",
+            "compare",
+            "--dataset",
+            str(bundle / "workspace/dataset"),
+            "--prediction",
+            f"synthetic={bundle / 'workspace/predictions.jsonl'}",
+            "--output",
+            str(tmp_path / "regenerated.json"),
+        ],
+        env={**os.environ, "PYTHONPATH": str(bundle / "source")},
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
     assert result.returncode == 0, result.stderr
     regenerated = read_json(tmp_path / "regenerated.json")
     regenerated.pop("dataset_manifest_sha256")
@@ -320,12 +419,21 @@ def test_local_dummy_bert_embedding_lightgbm_train_reload(tmp_path, monkeypatch)
     data = fixture_dataset(tmp_path)
     source = tmp_path / "tiny-bert"
     source.mkdir()
-    (source / "vocab.txt").write_text("\n".join(["[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]",
-                                               "code", "write", "synthetic", "task", "user"]))
+    (source / "vocab.txt").write_text(
+        "\n".join(
+            ["[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]", "code", "write", "synthetic", "task", "user"]
+        )
+    )
     tokenizer = transformers.BertTokenizerFast(vocab_file=str(source / "vocab.txt"), model_max_length=64)
     tokenizer.save_pretrained(source)
-    config = transformers.BertConfig(vocab_size=len(tokenizer), hidden_size=8, num_hidden_layers=1,
-                                     num_attention_heads=2, intermediate_size=16, max_position_embeddings=64)
+    config = transformers.BertConfig(
+        vocab_size=len(tokenizer),
+        hidden_size=8,
+        num_hidden_layers=1,
+        num_attention_heads=2,
+        intermediate_size=16,
+        max_position_embeddings=64,
+    )
     transformers.BertModel(config).save_pretrained(source)
     accessed = []
     original_reader = models.read_rows
@@ -336,10 +444,19 @@ def test_local_dummy_bert_embedding_lightgbm_train_reload(tmp_path, monkeypatch)
 
     monkeypatch.setattr(models, "read_rows", traced)
     bert = tmp_path / "bert"
-    bert_config = BertConfig(dataset=data, model=source, output=bert, epochs=2, max_length=24,
-                             seed=17, batch_size=4, gradient_clip_norm=0.25, truncation_side="left",
-                             optimizer_params={"lr": 1e-4, "weight_decay": 0.04, "eps": 1e-7},
-                             model_config={"hidden_dropout_prob": 0.0})
+    bert_config = BertConfig(
+        dataset=data,
+        model=source,
+        output=bert,
+        epochs=2,
+        max_length=24,
+        seed=17,
+        batch_size=4,
+        gradient_clip_norm=0.25,
+        truncation_side="left",
+        optimizer_params={"lr": 1e-4, "weight_decay": 0.04, "eps": 1e-7},
+        model_config={"hidden_dropout_prob": 0.0},
+    )
     with pytest.raises(ValueError, match="Unknown model_config"):
         train_bert.train(replace(bert_config, model_config={"misspelled_dropout": 0.1}))
     assert not bert.exists()
@@ -356,10 +473,12 @@ def test_local_dummy_bert_embedding_lightgbm_train_reload(tmp_path, monkeypatch)
     assert metadata["best_epoch"] in (1, 2) and len(metadata["history"]) == 2
     assert metadata["truncation"]["train"]["truncated"] > 0
     test_rows = read_rows(data / "test.jsonl")
-    predictions, timing = models.predict(bert, test_rows, batch_size=2)
+    original_test_rows = copy.deepcopy(test_rows)
+    result = models.predict(bert, test_rows, batch_size=2)
+    predictions, timing = result.predictions, result.metadata
     assert timing["count"] == len(test_rows)
     assert all(sum(r["probabilities"].values()) == pytest.approx(1) for r in predictions)
-    second, _ = models.predict(bert, test_rows, batch_size=1)
+    second = models.predict(bert, test_rows, batch_size=1).predictions
     for a, b in zip(predictions, second):
         assert a["probabilities"] == pytest.approx(b["probabilities"], abs=1e-6)
     encoder_path = tmp_path / "encoder"
@@ -369,10 +488,19 @@ def test_local_dummy_bert_embedding_lightgbm_train_reload(tmp_path, monkeypatch)
     encoder = st.SentenceTransformer(modules=[transformer, Pooling(8)])
     encoder.save(str(encoder_path), create_model_card=False)
     vectors = tmp_path / "vectors"
-    gbm_config = LightGBMConfig(dataset=data, embedding_model=encoder_path, embeddings=vectors,
-                               output=tmp_path / "gbm", embedding_max_length=24, embedding_batch_size=3,
-                               embedding_prompt="synthetic ", normalize_embeddings=False,
-                               truncation_side="left", rounds=5, patience=2)
+    gbm_config = LightGBMConfig(
+        dataset=data,
+        embedding_model=encoder_path,
+        embeddings=vectors,
+        output=tmp_path / "gbm",
+        embedding_max_length=24,
+        embedding_batch_size=3,
+        embedding_prompt="synthetic ",
+        normalize_embeddings=False,
+        truncation_side="left",
+        rounds=5,
+        patience=2,
+    )
     gbm_config.parameters.update(learning_rate=0.07, num_leaves=7, min_data_in_leaf=1, lambda_l2=0.6, seed=23)
     vector_meta = train_lightgbm.embed(gbm_config)
     gbm_config = replace(gbm_config, reuse_embeddings=True)
@@ -400,12 +528,17 @@ def test_local_dummy_bert_embedding_lightgbm_train_reload(tmp_path, monkeypatch)
     assert metadata["configuration"]["seed"] == 23
     assert metadata["configuration"]["normalize_embeddings"] is False
     import lightgbm as lgb
+
     saved_gbm = lgb.Booster(model_file=str(gbm / "model.txt"))
     assert saved_gbm.params["lambda_l2"] == pytest.approx(0.6)
     assert saved_gbm.params["learning_rate"] == pytest.approx(0.07)
     # The one-script default creates embeddings and fits the classifier together.
-    fresh_config = replace(gbm_config, reuse_embeddings=False, embeddings=tmp_path / "fresh-vectors",
-                           output=tmp_path / "fresh-gbm")
+    fresh_config = replace(
+        gbm_config,
+        reuse_embeddings=False,
+        embeddings=tmp_path / "fresh-vectors",
+        output=tmp_path / "fresh-gbm",
+    )
     fresh_metadata = train_lightgbm.train(fresh_config)
     assert fresh_metadata["embeddings_manifest_sha256"]
     assert (fresh_config.embeddings / "train.npy").is_file()
@@ -419,17 +552,19 @@ def test_local_dummy_bert_embedding_lightgbm_train_reload(tmp_path, monkeypatch)
     assert not (unselected.output / "manifest.json").exists()
     assert not (unselected.output / "model.txt").exists()
     import numpy as np
+
     expected_probs = saved_gbm.predict(np.load(vectors / "test.npy", allow_pickle=False))
     # Restore/inference works without either source model or vector cache.
     shutil.rmtree(source)
     shutil.rmtree(encoder_path)
     shutil.rmtree(vectors)
-    predictions, _ = models.predict(gbm, test_rows)
+    predictions = models.predict(gbm, test_rows).predictions
     assert len(predictions) == len(test_rows)
     for prediction, expected_values in zip(predictions, expected_probs):
         assert list(prediction["probabilities"].values()) == pytest.approx(expected_values)
     assert all(set(r["probabilities"]) == set(CATEGORIES) for r in predictions)
     assert compare(test_rows, {"bert": second, "lightgbm": predictions})["paired_count"] == len(test_rows)
+    assert test_rows == original_test_rows
     bad = copy.deepcopy(test_rows)
     bad[0]["text"] = "changed"
     with pytest.raises(ValueError, match="text hash"):
@@ -448,30 +583,49 @@ def test_artifacts_reject_symlinks_without_archive_dependency(tmp_path):
 def test_training_scripts_import_without_ml_or_side_effects(tmp_path):
     project = Path(__file__).resolve().parents[1]
     result = subprocess.run(
-        [sys.executable, "-S", "-c",
-         "import train_bert, train_lightgbm; "
-         "a = train_bert.BertConfig(); b = train_bert.BertConfig(); "
-         "a.optimizer_params['lr'] = 0.001; assert b.optimizer_params['lr'] == 2e-5; "
-         "a = train_lightgbm.LightGBMConfig(); b = train_lightgbm.LightGBMConfig(); "
-         "a.parameters['num_leaves'] = 3; assert b.parameters['num_leaves'] == 15"],
-        env={**os.environ, "PYTHONPATH": str(project)}, cwd=tmp_path, capture_output=True, text=True)
+        [
+            sys.executable,
+            "-S",
+            "-c",
+            "import train_bert, train_lightgbm; "
+            "a = train_bert.BertConfig(); b = train_bert.BertConfig(); "
+            "a.optimizer_params['lr'] = 0.001; assert b.optimizer_params['lr'] == 2e-5; "
+            "a = train_lightgbm.LightGBMConfig(); b = train_lightgbm.LightGBMConfig(); "
+            "a.parameters['num_leaves'] = 3; assert b.parameters['num_leaves'] == 15",
+        ],
+        env={**os.environ, "PYTHONPATH": str(project)},
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
     assert result.returncode == 0, result.stderr
     assert list(tmp_path.iterdir()) == []
-    result = subprocess.run([sys.executable, "-S", "-m", "classifier", "--help"],
-                            env={**os.environ, "PYTHONPATH": str(project)}, cwd=tmp_path,
-                            capture_output=True, text=True)
+    result = subprocess.run(
+        [sys.executable, "-S", "-m", "classifier", "--help"],
+        env={**os.environ, "PYTHONPATH": str(project)},
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
     assert result.returncode == 0
     assert "train-bert" not in result.stdout and "train-lightgbm" not in result.stdout
     for name in ("train_bert.py", "train_lightgbm.py"):
-        result = subprocess.run([sys.executable, "-S", str(project / name), "--epochs", "9"],
-                                cwd=tmp_path, capture_output=True, text=True)
+        result = subprocess.run(
+            [sys.executable, "-S", str(project / name), "--epochs", "9"],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+        )
         assert result.returncode != 0 and "does not accept command-line parameters" in result.stderr
     assert list(tmp_path.iterdir()) == []
 
 
 def test_config_rejects_contract_overrides_and_fractional_counts():
-    for config in (BertConfig(epochs=1.5), BertConfig(model_config={"num_labels": 2}),
-                   BertConfig(truncation_side="invalid")):
+    for config in (
+        BertConfig(epochs=1.5),
+        BertConfig(model_config={"num_labels": 2}),
+        BertConfig(truncation_side="invalid"),
+    ):
         with pytest.raises(ValueError):
             train_bert.train(config)
     for config in (LightGBMConfig(rounds=1.5), LightGBMConfig(parameters={"objective": "binary"})):

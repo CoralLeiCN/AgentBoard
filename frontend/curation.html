@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Dataset curation · AgentBoard</title>
+    <link rel="stylesheet" href="/curation.css" />
+    <script defer src="/curation.js"></script>
+  </head>
+  <body>
+    <header>
+      <div>
+        <p class="eyebrow">AGENTBOARD · LOCAL DATASET REVIEW</p>
+        <h1>Dataset curation</h1>
+        <p>Compare labels. Verify decisions. Review duplicate inputs.</p>
+      </div>
+      <button id="refresh">Refresh</button>
+    </header>
+    <main>
+      <p id="error" role="alert" hidden></p>
+      <p id="notice" role="status"></p>
+      <section class="overview" aria-label="Dataset summary">
+        <div id="counts">Loading workspace…</div>
+        <details>
+          <summary>Reference and similarity settings</summary>
+          <pre id="settings"></pre>
+        </details>
+      </section>
+      <div class="toolbar">
+        <label
+          >Reviewer name<input
+            id="reviewer"
+            maxlength="200"
+            placeholder="Your name"
+            autocomplete="name" /></label
+        ><button id="export">Export reviewed dataset</button><span id="downloads"></span>
+      </div>
+      <nav aria-label="Review queues">
+        <button data-queue="disagreements" aria-pressed="true">Label disagreements</button
+        ><button data-queue="pairs">Duplicate suggestions</button><button data-queue="all">All turns</button
+        ><button data-queue="unlabeled">Unlabeled</button><button data-queue="verified">Verified</button
+        ><button data-queue="removed">Removed</button>
+      </nav>
+      <div id="pair-options" hidden>
+        <label><input id="include-reviewed" type="checkbox" /> Show reviewed and inactive pairs</label>
+      </div>
+      <div class="workspace">
+        <aside aria-label="Review queue">
+          <p id="queue-count"></p>
+          <div id="items"></div>
+          <div class="pagination"><button id="previous">Previous</button><button id="next">Next</button></div>
+        </aside>
+        <section id="detail" aria-label="Selected evidence">
+          <p class="empty">Select a turn or duplicate suggestion.</p>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>

@@ -2,6 +2,8 @@
 
 Implemented 2026-09-07. Run an optional LLM to assign one primary purpose per session, or let an external agent submit a result. Importing and collecting telemetry do not invoke models. The `classification` feature is off by default; add it to the chosen [feature allowlist](features.md#configuration) for HTTP/UI use or CLI commands.
 
+For turn-level experiments across multiple models, use the separate [dataset curation module](dataset-curation.md). It reviews disagreements, preserves inferred versus human-verified labels, and suggests duplicates from target user input without changing session classification.
+
 AgentBoard-generated sessions (`producer="agentboard"`) are retained for inspection and excluded from all classification paths, including `--force` and external submissions. Use the **AgentBoard-generated** producer filter to inspect them. See [producer identity, marking and backfill rules](data-lineage.md#321-session-producer).
 
 ## Categories
@@ -73,12 +75,12 @@ uv run agentboard classify --all --force
 
 `local` requires a reachable model. `auto` permits a labeled dummy fallback on missing dependencies, connection failures, or timeouts. `dummy` always uses test keyword rules. Model rejection or malformed output remains an error. Dummy labels are not LLM judgments.
 
-For isolated development, use fixtures and the pinned dummy model:
+For isolated development, copy the [dev profile](../config/dev.toml) to a temporary configuration, add `classification` to its feature array, keep `model_mode = "dummy"`, and set `database` to the absolute path of this worktree's independent dev database. The default dev allowlist excludes classification; environment feature settings do not override TOML. Then use that configuration for fixtures, classification and UI:
 
 ```sh
-uv run agentboard --config config/dev.toml import examples/fixtures/codex-session.jsonl
-uv run agentboard --config config/dev.toml classify --all
-uv run agentboard --config config/dev.toml serve
+uv run agentboard --config /absolute/path/to/classification-dev.toml import examples/fixtures/codex-session.jsonl
+uv run agentboard --config /absolute/path/to/classification-dev.toml classify --all
+uv run agentboard --config /absolute/path/to/classification-dev.toml serve
 ```
 
 In the [dev UI](http://127.0.0.1:4319), choose **Classify purpose** inside a session or **Classify this page** for unclassified rows on the current page (up to 20). Page classification runs sequentially and reports progress, dummy results, and failures. **Stop after current session** prevents subsequent requests; closing the page also stops scheduling further requests. Use the purpose filter to inspect each category or unclassified sessions. Labels show the reason and model identity; truncated input is marked **Partial transcript**. The dev TOML explicitly pins dummy mode; an environment variable does not override it.
