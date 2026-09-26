@@ -8,6 +8,7 @@ Import Codex sessions and inspect LLM/tool timing in a mandatory browser dashboa
 | [Configurable features](docs/features.md) | Required core, optional capabilities, defaults, configuration, internal module contract |
 | [First-party modular feature plan](docs/modular-features-plan.md) | VS Code/Obsidian lessons, approved architecture target, staged refactor, deferred plugins |
 | [Specification](docs/specification.md) | Requirements, status, acceptance criteria |
+| [Classifier experiments](cronjob/classifier/README.md) | Independent BERT-like and embedding/LightGBM training, inference and saved-GPT comparison |
 | [Experiment storage design](docs/experiment-storage.md) | Filesystem archive and offline reports; optional MLflow publication remains planned |
 | [Data lineage](docs/data-lineage.md) | Raw mappings, timing, reimports, evidence limits |
 | [Data-quality gaps](docs/data-quality-gaps.md) | Correctness concerns and proposed checks |
@@ -37,6 +38,7 @@ The repository follows the backend/frontend boundary of the [Full Stack FastAPI 
 | [`backend/`](backend/) | Installable `agentboard` Python package and pytest suite |
 | [`frontend/`](frontend/) | Dependency-free HTML, CSS, JavaScript, demo data, and Node test |
 | [`config/`](config/) | Runtime configuration, including the isolated dev profile |
+| [`cronjob/classifier/`](cronjob/classifier/) | Independent classifier experiment scripts, dependencies and tests |
 | [`docs/`](docs/) | Architecture, behavior, evidence limits, and development workflow |
 
 The root `pyproject.toml` keeps existing `uv run agentboard ...` commands stable. Source checkouts serve `frontend/` directly; wheel builds bundle the same files under `agentboard/static`.
