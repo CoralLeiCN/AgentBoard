@@ -1,0 +1,15 @@
+{
+  "name": "agentboard-development",
+  "private": true,
+  "scripts": {
+    "format": "prettier --write frontend/curation.js frontend/curation.html frontend/curation.css frontend/tests/curation.test.cjs",
+    "format:check": "prettier --check frontend/curation.js frontend/curation.html frontend/curation.css frontend/tests/curation.test.cjs"
+  },
+  "devDependencies": {
+    "prettier": "3.6.2"
+  },
+  "prettier": {
+    "printWidth": 110,
+    "singleQuote": true
+  }
+}

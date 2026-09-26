@@ -2,9 +2,11 @@
 
 **Filesystem implemented — 2026-09-25.** The recorder, reader and offline coverage report use durable files outside Git checkouts. Optional MLflow publication/deployment and Hugging Face dataset storage remain planned. [Specification §15](specification.md#15-durable-experiment-storage) owns the requirements and acceptance criteria.
 
-## Current behavior and motivation
+The [dataset curation module](dataset-curation.md) consumes pinned results for label review and input-only duplicate suggestions. Mutable review workspaces live in `sync/curation/`; each export is a new immutable dataset bundle. Historical classifier runs and raw evidence remain unchanged.
 
-Evidence for the [independent classification report](experiments/2026-09-23-turn-purpose-independent-luna.md#interpretation-and-evidence) originally lived under the main checkout's ignored `.agentboard/experiments/`. The [completed migration](#local-migration-audit) preserved those private inputs, model outputs, comparisons and logs, and added portable bundles at the configured data home, so reports retain their dependencies after worktree removal. Only the published report is versioned; supporting evidence remains local.
+## Boundaries
+
+Experiment inputs, attempts, results, analysis code and reports live in immutable bundles under the machine data home. The completed one-time migration copied selected historical evidence there without changing originals. Consumers resolve pinned manifest/artifact hashes, so worktree removal cannot invalidate an archived dependency. Git documentation describes formats and workflows; it is not a second experiment catalog.
 
 The [development workflow](development.md#automatic-worktree-data-setup) shares a fixed baseline through independent writable dev snapshots. The [experiment CLI](../backend/agentboard/experiments/cli.py) has separate machine settings and dispatches before the trace Runtime. The standard-library [recorder](../backend/agentboard/experiments/archive.py) adds no MLflow dependency. Database snapshots are recovery evidence, not an experiment catalog. This facility does not replace the trace Store or baseline workflow.
 
@@ -75,7 +77,8 @@ Implemented layout under the configured root:
       intermediate/
       outputs/                # Results, tables, figures, reports
     staging/                  # Unfinalized runs and incomplete downloads
-    sync/                     # Mutable local publication journal and ID mappings
+    sync/                     # Mutable navigation and review state
+      curation/               # Review workspaces; separate from immutable bundles
 ```
 
 There is no `projects/<project>/` directory. Validate project namespace metadata and safe relative artifact paths; reject absolute artifact paths, traversal, and escaping symlinks on both write and fetch. Dataset and run IDs are UUIDs independent of Git and MLflow IDs. New recorder calls allocate new IDs. Existing verified bundles retain their IDs when copied to another data home. A filesystem reader scans manifests; any future index is rebuildable and is not the evidence source. Lifecycle paths such as `runs/`, `staging/`, and `sync/` below are relative to `<data-home>/experiments/`.
@@ -106,22 +109,23 @@ Coverage recipes use `format_version: "classification-coverage-v1"`, `project`, 
 
 A coverage run saves the recipe, materialized pinned inputs, standalone standard-library analysis source and deterministic output. It pins the complete source manifests, preserving prompts and provenance alongside the analysis. The output distinguishes batched and independent execution; it does not establish model equivalence, validate provider internals, or waive historical semantic errors. Unsupported schemas/providers fail without executing archive contents.
 
-## Current dataset and pending classification
+## Dataset and classification coverage
 
-**Selected dataset, clarified 2026-09-25:** retain one current combined dataset:
+**Verified from the pinned local coverage report on 2026-09-26.** The selected combined dataset contains **247 user sessions and 1,431 turn targets**: local sessions through September 24 plus Spark. The local cutoff is `2026-09-25T00:00:00+01:00`, exclusive (Europe/London). Selection applies to classifier inputs; complete source rollouts remain intact.
 
-| Dataset | User sessions | Recorded turn targets |
-| --- | ---: | ---: |
-| Local through September 24 + Spark | 247 | 1,431 |
+| Model | Reasoning effort | Execution | Available / requested | Pending |
+| --- | --- | --- | ---: | ---: |
+| GPT-6 Luna | low | independent | 1,431 / 1,431 | 0 |
+| GPT-6 Sol | xhigh | independent | 1,431 / 1,431 | 0 |
+| GPT-5.6 Sol | xhigh | independent | 1,431 / 1,431 | 0 |
+| GPT-5.6 Terra | low | independent | 1,431 / 1,431 | 0 |
+| GPT-5.6 Luna | low | independent | 1,431 / 1,431 | 0 |
 
-The local cutoff is `2026-09-25T00:00:00+01:00`, exclusive (Europe/London). Complete source files remain intact; cutoff selection applies to the classifier inputs. The earlier smaller cohorts describe historical executions, not two additional active dataset versions required by this migration. Preserve their exact inputs, subset manifests, outputs, and required source dependencies as historical run evidence. One current dataset does not make finalized content mutable: a later content change still requires a new immutable identity or revision.
+All five configurations use `session-purpose-v1`. This establishes usable saved results under the coverage checks, not human verification or classification accuracy. Older batched/subset runs remain historical evidence with their original coverage; their migration-era pending counts do not describe this selected report. Curation can use GPT-6 Sol xhigh, independent, as its inferred reference. Human adjudication remains a separate step.
 
-Existing runs cover only subsets of this dataset. The private import audit on 2026-09-25 records 666 historically labeled turns: 659 retain matching classifier input hashes, and seven need reclassification because restored predecessor context changed. Another 616 Spark turns and 149 local turns have no labels. The input-reuse audit therefore identified **772 missing or changed-input targets** (`616 + 149 + 7`), out of 1,431. That input-reuse audit did not validate every saved label. The implemented validity-aware report finds **one additional GPT-5.6 Luna batched result with a recorded prompt-compliance error**. Five configurations therefore have 659 available / 772 pending; GPT-5.6 Luna low, batched has 658 available / 773 pending. Across all six configurations, 773 distinct turns are pending in at least one configuration. These are distinct-turn counts, not model-call counts; the underlying archives remain private local evidence.
+Coverage is calculated per pinned report by session/turn identity, full classifier-input hash (including predecessor context), model, effort, execution and taxonomy. Missing, invalid or changed-input results stay pending; incompatible configurations never fill one another's gaps. Each report retains its denominator and excluded targets. A later dataset or classifier execution creates new immutable artifacts; neither old results nor historical execution outcomes are rewritten.
 
-Keep historical execution outcomes unchanged. A succeeded run on its original subset can coexist with **pending coverage** of the current dataset. Record the requested target subset, available results, missing/invalid results, and changed-input reasons against session/turn identities and full classifier input hashes, including predecessor context. Never fill missing targets with inherited labels or count incompatible configurations as coverage. Reports state the requested denominator and every excluded or pending target.
-
-Later classifier executions create new runs over explicit pending targets, with references to reusable prior results; they do not append to finalized historical runs. Recording, migration, and coverage calculation make no model calls. [Storage and classifier follow-ups](backlog.md#experiment-storage-and-classification-follow-ups) are tracked separately.
-
+`sync/current-classification.json` is rebuildable machine-local navigation to pinned artifacts, not an authoritative result or a document to commit. `curate --current` resolves its coverage recipe and saves exact references. Future reports may select different results; use archived manifests and the [filesystem commands](#filesystem-commands-and-producer-api) to inspect them.
 ## Future dataset storage
 
 **Deferred direction:** move dataset version storage to Hugging Face while keeping experiment results in this archive. Initially, datasets use `experiments/datasets/`. Keep logical dataset identity, immutable content/version references, subset selection, and hashes separate from their storage location, so a later adapter can resolve the same evidence elsewhere.
@@ -193,15 +197,15 @@ Back up both local archives and the service's metadata/artifacts, including auth
 1. **Portable filesystem format (implemented):** provide the recorder/reader under `<data-home>/experiments/`, validation, interrupted-run recovery, and offline report example. Keep project identity in metadata, dataset references independent of their storage location, MLflow optional, and tracing startup unchanged.
 2. **One-time legacy migration (completed):** the selected directories, full source dependencies and one combined dataset were inventoried, copied and verified. Historical subsets, raw files, unknown provenance and pending coverage were preserved. The migration tooling was then removed at the user's request; no legacy import interface is maintained. New reports and experiments use the recorder directly.
 3. **Shared service and adapter:** implement the private deployment, scoped data policy, publication journal, dependency transfer, and fetch verification. Establish behavior against pinned MLflow versions using synthetic runs before publishing selected real evidence.
-4. **Producer adoption and recovery:** instrument experiment/report scripts, migrate references only after verified imports, and exercise backup/restore and cross-machine reads. Existing report documents remain evidence of their original execution; migration records add storage provenance without rewriting history. Later classifier executions address pending targets as new runs; they are separate from storage migration.
+4. **Producer adoption and recovery:** instrument experiment/report scripts, migrate references only after verified imports, and exercise backup/restore and cross-machine reads. Archived reports retain their original execution evidence; migration records add storage provenance without rewriting history. Any later classifier execution records a new run over an explicit target subset; it is separate from storage migration.
 
 These steps do not refresh, relocate, or migrate the development baseline/dev databases. Remaining decisions concern the future service host/version pins, operator credential setup and operational backup schedule. They do not change the selected two modes, portable evidence contract, or filesystem-backed MLflow architecture.
 
 ## Local migration audit
 
-**Completed 2026-09-25.** The owner-selected data home contains one dataset (247 user sessions, 1,431 targets, 346 complete raw rollout files), eight preserved historical experiment/import bundles, a coverage report and a migration verification report. The initial copy inventory contained **5,484 files / 13,551,950,073 bytes**, including canonical dataset evidence and portable legacy reference maps. Every copied file and dependency passed SHA-256 verification; originals still matched the dry-run inventory. An identical repeat import reused all nine imported identities, and staging is empty.
+**Completed 2026-09-25.** The migration produced one combined source dataset (247 user sessions, 1,431 targets, 346 complete raw rollout files), eight preserved historical experiment/import bundles, a coverage report and a migration verification report. The initial copy inventory contained **5,484 files / 13,551,950,073 bytes**, including canonical dataset evidence and portable legacy reference maps. Every copied file and dependency passed SHA-256 verification; originals still matched the dry-run inventory. An identical repeat import reused all nine imported identities, and staging is empty.
 
-The current coverage report pins the dataset, five-model comparison and independent Luna results. Its archived standalone analysis regenerated byte-identical output without AgentBoard imports or model calls. The private receipt retains the explicit source inventory/plan, source-to-bundle mappings, source snapshots, environment lock and verification results. Archived script copies are immutable audit evidence, not a maintained migration interface. `sync/current-classification.json` provides rebuildable navigation pointers to the dataset, coverage and receipt; pinned immutable manifests remain authoritative. Use `agentboard experiments list` with the configured machine data home to inspect the catalog.
+The migration-era coverage report pinned the dataset, five-model batched comparison and independent Luna results. Its archived standalone analysis regenerated byte-identical output without AgentBoard imports or model calls. The private receipt retains the explicit source inventory/plan, source-to-bundle mappings, source snapshots, environment lock and verification results. Archived script copies are immutable audit evidence, not a maintained migration interface. Later classifier runs and curated exports add bundles; the migration inventory is not the current catalog size. Current selected coverage is recorded in [dataset and classification coverage](#dataset-and-classification-coverage). Use `agentboard experiments list` with the configured machine data home to inspect the catalog.
 
 All complete source files, archived SQLite snapshots, raw attempts, private scripts and intermediate results remain preserved. Earlier cohorts exist as historical evidence, not additional active dataset bundles. Split-session normalization limitations and unknown historic execution provenance remain explicit. The migration did not alter baseline/dev databases, execute classifiers, upload evidence or establish a separate-storage backup.
 
@@ -209,4 +213,4 @@ All complete source files, archived SQLite snapshots, raw attempts, private scri
 
 [Synthetic regressions](../backend/tests/test_experiments.py) cover exact byte preservation, immutable identities, invalid roots/paths, Git worktrees, pinned hashes/dependencies, missing/cyclic inputs, unsupported versions, write failures, partial recovery, SQLite WAL snapshots, same-prefix artifact paths, CLI isolation, pending coverage and offline report regeneration after copy/restore. The [example](../examples/experiment_storage.py) exercises recording and deterministic regeneration without a server or model. These tests do not establish network-filesystem durability, remote publication, provider reproducibility or operational backup guarantees.
 
-[EXP-01–14](specification.md#15-durable-experiment-storage) retain the full acceptance contract, including planned shared-mode checks. Follow the [testing guide](testing.md); no UI, model or app-server protocol behavior changes in this implementation.
+[EXP-01–14](specification.md#15-durable-experiment-storage) retain the full acceptance contract, including planned shared-mode checks. Follow the [testing guide](testing.md); storage tests invoke no model or app-server process.

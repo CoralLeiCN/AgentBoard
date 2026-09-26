@@ -234,3 +234,4 @@ __marimo__/
 *.snapshot.json
 .env.*
 .DS_Store
+node_modules/

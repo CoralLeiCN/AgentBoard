@@ -23,19 +23,13 @@ def identity(row):
     return pair
 
 
-def calculate(payload):
-    if payload.get("format_version") != VERSION:
-        raise ValueError("Unsupported coverage recipe")
-    targets = payload["targets"]
-    target_map = {}
-    for target in targets:
-        key = identity(target)
-        if key in target_map:
-            raise ValueError("Duplicate target identity")
-        target_map[key] = target["classification_input_sha256"]
+def source_configurations(sources):
     configurations = []
-    for source in payload["sources"]:
+    for source in sources:
         value = source["value"]
+        taxonomy = value.get("method", {}).get("taxonomy_version", value.get("taxonomy_version", "session-purpose-v1"))
+        if taxonomy != "session-purpose-v1":
+            raise ValueError("Unsupported classification taxonomy")
         if source["format"] == "turn-comparison-v1":
             models = value["experiment"]["models"]
             rows = value["turn_results"]
@@ -55,6 +49,20 @@ def calculate(payload):
             raise ValueError("Unsupported historical results schema; provide an explicit saved conversion")
     if not configurations:
         raise ValueError("Coverage requires at least one classifier configuration")
+    return configurations
+
+
+def calculate(payload):
+    if payload.get("format_version") != VERSION:
+        raise ValueError("Unsupported coverage recipe")
+    targets = payload["targets"]
+    target_map = {}
+    for target in targets:
+        key = identity(target)
+        if key in target_map:
+            raise ValueError("Duplicate target identity")
+        target_map[key] = target["classification_input_sha256"]
+    configurations = source_configurations(payload["sources"])
     results, config_ids, pending_any = [], set(), set()
     for configuration, rows in configurations:
         cid = hashlib.sha256(json.dumps(configuration, sort_keys=True).encode()).hexdigest()

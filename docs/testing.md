@@ -4,7 +4,7 @@ Use this guide to choose, run and report checks when developing a feature or fix
 
 ## Prepare the environment
 
-Run commands from the repository root. Use Python 3.11 or newer, `uv`, and Node.js with its built-in `node:test` runner. Node is needed for frontend tests, not to run AgentBoard; there is no npm dependency installation. Python dependencies and pytest configuration are in [pyproject.toml](../pyproject.toml).
+Run commands from the repository root. Use Python 3.11 or newer, `uv`, and Node.js with its built-in `node:test` runner. Node is needed for frontend tests and formatting, not to run AgentBoard. Run `npm ci` to install the pinned development-only Prettier dependency from [package-lock.json](../package-lock.json). Python dependencies and pytest configuration are in [pyproject.toml](../pyproject.toml).
 
 In each worktree, complete [the worktree setup](development.md#automatic-worktree-data-setup) before development or UI verification. It runs `uv sync --locked --extra dev`, preserves an existing dev database, and snapshots the main checkout's fixed baseline when available. The development guide owns the setup, checkpoint and recovery commands.
 
@@ -34,12 +34,13 @@ Use `-k` to select a test by name while iterating. Choose additional coverage ac
 
 ## Routine checks before handoff
 
-After code changes, run the complete offline backend and frontend suites, Python lint and whitespace checks:
+After code changes, run the complete offline backend and frontend suites, Python lint, formatting and whitespace checks:
 
 ```sh
 uv run --extra dev pytest -m "not e2e" -q
 node --test frontend/tests/*.test.cjs
 uv run --extra dev ruff check backend examples scripts
+uv run --extra dev python scripts/check_style.py
 git diff --check
 ```
 
@@ -48,11 +49,16 @@ git diff --check
 | Backend pytest | Unit and integration coverage for imports, storage, API/CLI behavior, telemetry, timing, usage, lineage, model failures and native protocol. The [shared fixtures](../backend/tests/conftest.py) use a temporary database and dummy model for API tests. Stored app-server schema integrity is also verified offline. |
 | Frontend Node tests | JavaScript rendering and interaction logic, including simulated DOM and HTTP responses. They do not launch a browser or verify visual layout. The wildcard runs all test files. |
 | Ruff | Python lint and import checks; it does not establish runtime correctness. |
+| Style check | Ruff formatting for the curation/embedding modules, their tests and demo, and the independent classifier project; Prettier for the curation frontend. The exact adopted scope lives in [check_style.py](../scripts/check_style.py) and [package.json](../package.json). Other existing files are not yet formatter-enforced. Use `uv run --extra dev python scripts/check_style.py --fix` to format this scope. |
 | Git diff check | Whitespace errors in tracked changes; review new files as well. |
 
-`-m "not e2e"` explicitly deselects live tests. Plain `pytest -q` normally skips them, but exporting an `AGENTBOARD_E2E_CODEX_*` or `AGENTBOARD_E2E_CLASSIFICATION_*` base URL, model or key also opts the corresponding suite into live execution. Prefer explicit selection for predictable offline runs.
+`-m "not e2e"` explicitly deselects live tests. Plain `pytest -q` normally skips them, but exporting an `AGENTBOARD_E2E_CODEX_*`, `AGENTBOARD_E2E_CLASSIFICATION_*` or `AGENTBOARD_E2E_EMBEDDING_*` base URL, model or key also opts the corresponding suite into live execution. Prefer explicit selection for predictable offline runs.
 
 The repository currently has no checked-in GitHub Actions workflow; run these checks locally. Passing tests establish only the behavior they cover.
+
+In the curation scope, keep templates readable and rendering separate from controller actions. Test exported interfaces with injected requests and DOM dependencies rather than extracting source text. Use shared plain factories for synthetic archives rather than importing or unwrapping another test module's fixtures. Parse provider settings into typed configuration objects at the boundary, return named results and explicit annotations, and preserve accurate exception causes. Keep revision checks and atomic writes inside their existing lock; formatting and decomposition must preserve saved data and review semantics.
+
+Apply the same Python practices to the independent classifier project: annotate interfaces, use named training/prediction results, separate model loading and epoch execution from orchestration, and validate external input at its boundary. Keep optional ML imports lazy and avoid mutating caller options or rows. Missing-package advice must identify an absent optional dependency; unrelated import or implementation errors must propagate. Preserve split assignments, evaluation semantics and persisted artifact formats. Run the [classifier checks](../cronjob/classifier/README.md#verification-and-limits) separately, including synthetic training/reload when model code changes.
 
 ## Browser checks
 
@@ -80,11 +86,11 @@ Every test that invokes Codex or another model must use **`http://192.168.1.220:
 uv run --extra dev pytest --run-private-e2e -m e2e -q
 ```
 
-This runs the [Codex telemetry test](../backend/tests/test_codex_endpoint_e2e.py) and [synthetic classification tests](../backend/tests/test_classification_endpoint_e2e.py). The Codex test requires `codex` on `PATH`. Mark new live tests `pytest.mark.e2e`, use the [private_endpoint fixture](../backend/tests/conftest.py), and use synthetic prompts instead of shared real sessions.
+This runs the [Codex telemetry test](../backend/tests/test_codex_endpoint_e2e.py), [synthetic classification tests](../backend/tests/test_classification_endpoint_e2e.py) and the [synthetic embedding test](../backend/tests/test_embedding_endpoint_e2e.py). The Codex test requires `codex` on `PATH`. Mark new live tests `pytest.mark.e2e`, use the [private_endpoint fixture](../backend/tests/conftest.py), and use synthetic prompts instead of shared real sessions.
 
-The [shared endpoint policy](../scripts/private_endpoint.py) rejects any different base URL before a model request or Codex process. Discovery requests only the private `/models`, disables proxies/redirects, and selects automatically only when exactly one model is advertised. Pin a model with `AGENTBOARD_E2E_CODEX_MODEL` or `AGENTBOARD_E2E_CLASSIFICATION_MODEL` when needed. The matching `*_API_KEY` is optional; credentials stay out of process arguments. [example.env](../example.env) lists the settings. As noted above, exporting a suite's endpoint/model/key settings also opts it into live testing unless `e2e` is deselected.
+The [shared endpoint policy](../scripts/private_endpoint.py) rejects any different base URL before a model request or Codex process. Discovery requests only the private `/models`, disables proxies/redirects, and selects automatically only when exactly one model is advertised. Pin a model with `AGENTBOARD_E2E_CODEX_MODEL`, `AGENTBOARD_E2E_CLASSIFICATION_MODEL` or `AGENTBOARD_E2E_EMBEDDING_MODEL` when needed. The matching `*_API_KEY` is optional; credentials stay out of process arguments. [example.env](../example.env) lists the settings. As noted above, exporting a suite's endpoint/model/key settings also opts it into live testing unless `e2e` is deselected.
 
-The endpoint must support streaming Responses for Codex and structured Responses for classification. The Codex test requests one short synthetic response, disables retries, and checks the final message plus ingested `otlp_log`, `otlp_trace` and normalized `llm` events. Its temporary Codex home ignores user configuration, OAuth state and execution-policy rules; tools inherit no environment and execution is read-only without approvals. The receiver/database are temporary and separate from ports 4318/4319 and shared real sessions.
+The endpoint must support streaming Responses for Codex, structured Responses for classification, and `/embeddings` for embedding tests. To run only embeddings, use `uv run --extra dev pytest --run-private-e2e -m e2e backend/tests/test_embedding_endpoint_e2e.py -q`. A service without an embedding model is a test failure, not a reason to substitute another endpoint. The Codex test requests one short synthetic response, disables retries, and checks the final message plus ingested `otlp_log`, `otlp_trace` and normalized `llm` events. Its temporary Codex home ignores user configuration, OAuth state and execution-policy rules; tools inherit no environment and execution is read-only without approvals. The receiver/database are temporary and separate from ports 4318/4319 and shared real sessions.
 
 The tests clear inherited proxy and hosted OpenAI environment settings. The Codex child inherits only runtime essentials and the optional private-provider key, excluding desktop app pipes/session IDs. It pins `RUST_LOG=info` for consistent log filtering; parent configuration is unchanged. Child stdout/stderr diagnostics stay in the temporary test directory.
 
@@ -107,10 +113,10 @@ uv run python examples/benchmark.py --events 10000
 uv run --extra dev python examples/feature_benchmark.py --requests 20
 ```
 
-Both probes use temporary databases. Record workload, environment and source revision with measurements; these probes have no universal pass threshold and do not establish production capacity. See [measurement evidence and limits](architecture-review.md#measurements).
+Both probes use temporary databases. Record workload, environment and source revision with measurements; these probes have no universal pass threshold and do not establish production capacity. See [measurement evidence and limits](architecture.md#measurements).
 
 ## Report verification
 
 Before handoff, record the commands run and their results, the browser flows/configuration checked, and any skipped, failed or blocked checks with reasons. Distinguish dummy or fake-protocol coverage from actual model execution. If a later change affects an earlier check, rerun the relevant checks. Link any unresolved correctness issue to the [gap register](data-quality-gaps.md).
 
-Keep this guide about the repeatable workflow. Record dated results alongside the relevant change, as in [the architecture review](architecture-review.md#verification), rather than treating an earlier passing run as evidence for new code.
+Keep this guide about the repeatable workflow. Record dated results with the maintained feature document, keeping historical measurements explicitly dated. An earlier passing run is not evidence for new code; do not add separate review or pointer pages.

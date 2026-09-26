@@ -104,6 +104,8 @@ Each artifact manifest saves the dataclass values in `run_config`; model metadat
 
 `train_lightgbm.py` creates embeddings and fits trees in one run by default. Set `reuse_embeddings=True` to use an existing verified cache; the dataset, encoder fingerprint, prompt, normalization, token limit and truncation side must match the dataclass. Use new output directories for another run. Inference restores these settings from the saved model rather than current script defaults.
 
+Python inference through `classifier.models.predict(...)` returns a [PredictionResult](classifier/contracts.py) with `.predictions` and `.metadata` fields. It leaves input rows unchanged; archive recording likewise copies caller options before selecting filesystem mode. These in-memory interfaces preserve existing JSON artifact formats, with no dataset migration. File readers reject nonobject rows, and configuration validation rejects invalid counts before model work. The CLI reports expected input/file errors and missing optional packages; unrelated import and implementation errors retain their original exceptions. The [maintenance contract](../../docs/specification.md#12-verification-and-maintenance) defines the adopted style scope.
+
 For example, in Python with `cronjob/classifier` on the import path:
 
 ```python
@@ -141,23 +143,29 @@ Available-only scores may use different subsets. **Use paired scores to compare 
 
 [Offline regressions](tests/test_classifier_training.py) cover source retention, reproducible/grouped splits, missing/stale/pseudo labels, historical GPT adapters, metrics/coverage, script/utility isolation, dataclass configuration and archive restoration. With the optional packages installed, the same file includes a tiny randomly initialized BERT and synthetic embedding/LightGBM round trip; it downloads no weights and contacts no model provider. This establishes adapter behavior, not useful classification quality.
 
+[Boundary regressions](tests/test_classifier_contracts.py) cover malformed row/message input, batch-size validation and accurate CLI exception handling. Training/reload and archive tests also check that caller rows/options remain unchanged.
+
 Run the [routine checks](../../docs/testing.md#routine-checks-before-handoff). The independent tests are outside the backend suite. Run `uv run --project cronjob/classifier --extra dev pytest cronjob/classifier/tests -q` for the core checks; archive and ML tests skip when their optional dependencies are absent. Include the ML packages and existing archive adapter to exercise every test:
 
 ```sh
 uv run --project cronjob/classifier --locked --extra dev --extra ml --with . \
   pytest cronjob/classifier/tests -q
+uv run --project cronjob/classifier --locked --extra dev ruff check cronjob/classifier
+uv run --project cronjob/classifier --locked --extra dev ruff format --check cronjob/classifier
 ```
 
 Live model tests remain restricted to the [isolated private harness](../../docs/testing.md#private-model-tests). Real-data training, human adjudication, hyperparameter studies and final GPT performance measurements are separate experiment execution. The pipeline does not claim to have run them.
 
-**Verified 2026-09-26 after the split-feasibility and DART fixes:**
+**Verified 2026-09-26 after the style refactor:**
 
 | Check | Result |
 | --- | --- |
-| Independent environment: `uv sync --project cronjob/classifier --locked --extra dev --offline`, then its Python runs `pytest cronjob/classifier/tests -q` | 25 passed; optional archive and ML tests skipped. Installed `classifier --help` works; AgentBoard is absent from this environment. |
-| Full classifier tests in the existing Python 3.12 ML environment, with `PYTHONPATH=cronjob/classifier` and Hugging Face offline mode | 27 passed, including flexible split coverage and infeasibility, DART aliases rejected before work, nondefault dataclass settings, synthetic training/reload, embedding cache validation and archive restoration. On this macOS host, `DYLD_LIBRARY_PATH` points to that environment's PyTorch OpenMP library. No pretrained weights or provider calls used. |
-| Application routine suites | Backend: 563 passed, 5 live tests deselected. Frontend: 46 passed. |
-| Both projects' Ruff and offline lock checks, local documentation links and `git diff --check` | Passed. `git diff --exit-code -- backend pyproject.toml uv.lock` confirms application code, tests and root dependencies are unchanged. |
+| Full classifier suite in its locked Python 3.13 environment, with `PYTHONPATH=backend:cronjob/classifier`, `HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1` | 42 passed, including split feasibility, DART rejection, nondefault dataclass settings, synthetic training/reload, cache validation, archive restoration and boundary errors. Isolation tests run without site packages or AgentBoard. No pretrained weights or provider calls used. |
+| Synthetic before/after comparison | Rendered rows, seeded split assignments and the complete comparison report matched the pre-refactor baseline for 24 synthetic turns. This checks that cohort, not every possible input. |
+| Application routine suites | Backend: 626 passed, 6 live tests deselected. Frontend: 54 passed. Includes the existing curation changes in this worktree. |
+| Both projects' Ruff and offline lock checks, scoped Ruff/Prettier formatting, local documentation links and `git diff --check` | Passed. The classifier refactor adds no application runtime dependency. |
+
+The first ML test attempt could not load LightGBM because this macOS host lacked a discoverable OpenMP runtime. The successful run set `DYLD_LIBRARY_PATH` to `cronjob/classifier/.venv/lib/python3.13/site-packages/torch/lib` (an absolute path on this host), using the installed PyTorch library for that process; no system library was installed.
 
 Browser, live-provider and CLI schema-upgrade checks were not run: no UI, provider integration or Codex schema changed. Real-data training and final performance measurements remain pending.
 

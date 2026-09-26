@@ -1,6 +1,6 @@
 # Data-quality gap register
 
-Reviewed: **2026-09-08**. Companion to [Data lineage and transformation rules](data-lineage.md).
+Maintained correctness register; individual evidence dates appear below. Companion to [Data lineage and transformation rules](data-lineage.md).
 
 Current correctness limits and proposed acceptance cases for trace/evaluation decisions. Entries remain open, without delivery commitments or scope changes; deferred capacity belongs in the [wishlist](backlog.md).
 
@@ -53,7 +53,7 @@ For a fix, record mapping/version, source variants, tests, metric changes, and e
 | 2026-09-06 | Consolidated the accepted [rollout compatibility policy](specification.md#35-codex-rollout-compatibility-policy); unsupported-record reporting, origin classification, and complete event-to-source linkage remain open. Documentation only. |
 | 2026-09-06 | Dashboard verification added live evidence to DQ-12; correlation remains open and stored rows were unchanged. Fixed Timeline pagination to filter operation kinds before page limits ([regression](../backend/tests/test_api_models.py)); event-only sources now explain their coverage. Parallel membership and normalized exports are unchanged. |
 | 2026-09-06 | DQ-12 worker-ID association partially corrected by `otlp-session-v2`, including explicit repair of existing decoded spans. Timeline now includes internal timed spans; they remain outside LLM/tool/wait totals. Duration units and ambiguous correlation remain open. |
-| 2026-09-06 | [Grouping audit](session-grouping-review.md): previous session counts incorrectly included trace fallback groups. Schema v5 separates their identity kind and UI/API counts; v3 correlation recovers Codex `thread_id` and parent-span evidence. Ambiguous records remain explicitly unattributed. |
+| 2026-09-06 | [Session correlation regressions](../backend/tests/test_otlp_sessions.py): previous session counts incorrectly included trace fallback groups. Schema v5 separates their identity kind and UI/API counts; v3 correlation recovers Codex `thread_id` and parent-span evidence. Ambiguous records remain explicitly unattributed. |
 | 2026-09-06 | Schema v6 and `codex-jsonl-v2` add verified event archive and primary record/boundary links, with a Raw JSONL inspector tab. [Regression tests](../backend/tests/test_event_raw.py) cover reimport binding and unavailable hybrid evidence. Per-field context lineage and original OTLP wire bytes remain open. |
 | 2026-09-06 | `codex-jsonl-v3` limits Raw JSONL to actual event records. Inferred intervals have no raw event record; calculation-only boundaries, including older stored links, are excluded without reimport. Recorded LLM items and tool call/result records remain available. |
 | 2026-09-07 | Schema v7 and `codex-jsonl-v4` persist leaf-level Codex event/session provenance, including propagated context, inferred boundaries, fallback methods, and separate archives for hybrid fields. API/UI consume verified pointers; legacy fields require matching reimport. DQ-02/DQ-11 remain open for other sources and derived analyses. |

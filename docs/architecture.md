@@ -1,6 +1,8 @@
 # Architecture
 
-Implemented first-party architecture, reviewed 2026-09-08. The [principles](principles.md) guide tradeoffs; the [modular feature plan](modular-features-plan.md) records the design decisions. [Data lineage](data-lineage.md) defines mappings and [data-quality gaps](data-quality-gaps.md) limits their interpretation.
+Current first-party architecture, reviewed 2026-09-26. The [principles](principles.md) guide tradeoffs; the [feature contract](features.md#first-party-module-contract) defines module interfaces. [Data lineage](data-lineage.md) defines mappings and [data-quality gaps](data-quality-gaps.md) limits their interpretation.
+
+The [dataset curation module](dataset-curation.md) is an explicit experiment workflow. Its review API and UI operate on pinned archive inputs and locked mutable workspaces, independently of the trace Runtime. Human decisions export as new immutable datasets with full source references and removal markers. Workspace creation uses a configurable local Sentence Transformers encoder or remote embeddings API, then compares saved vectors with cosine similarity. Browsing and export never invoke a provider; the remote adapter transmits only normalized target user input and stores provenance without credentials.
 
 ```mermaid
 flowchart LR
@@ -16,6 +18,12 @@ flowchart LR
   H --> U[Bundled UI and external API clients]
   V --> L[Shared CLI]
 ```
+
+## Design decisions
+
+AgentBoard is a first-party modular monolith: trusted feature code ships in the same repository and release. A static catalog supports validation before storage opens and lazy construction of enabled services. Core owns the database, complete raw capture, UI, authentication, admission and lifecycle; features receive narrow named operations. These boundaries keep disabled work out of startup and avoid an external API compatibility promise.
+
+Settings are process-wide and take effect after restart. No arbitrary module discovery, feature-owned migrations, UI injection, hot loading or extension process is implemented. Third-party distribution and process isolation remain [deferred](backlog.md#third-party-extensions); preserving an internal boundary does not commit to a public plugin API.
 
 ## Ownership and components
 
@@ -52,9 +60,32 @@ Models use worker threads with configurable timeout, bounded text context, and n
 
 ## Performance and remaining limits
 
-[Review measurements](architecture-review.md) compare fixed profiles before and after the refactor. They are a small retry workload, not a capacity certification. Representative growing datasets, optional-analysis load, export/tail latency, and numerical budgets remain unmeasured or unagreed. Complete capture cannot be traded away to improve these results.
+The dated measurements below cover a small retry workload, not production capacity. Complete capture cannot be traded away to improve these results. Current validation commands and required profiles live in the [testing guide](testing.md).
 
 This is one authenticated shared workspace, with plaintext storage and no tenant isolation. [Correctness gaps](data-quality-gaps.md) remain explicit: inferred input/timing semantics, unsupported-record reporting, conflicting-history corrections, cross-source lineage and reproducible analysis snapshots. Future first-party adapters or profiled component replacements should preserve capture and API contracts. Third-party packaging, RPC workers and larger service infrastructure remain [deferred](backlog.md).
+
+### Measurements
+
+Historical benchmark, **2026-09-08**.
+
+Recorded with `uv run --extra dev python examples/feature_benchmark.py --requests 20`. The [benchmark JSON](measurements/2026-09-08-feature-profiles.json) pins the measured source fingerprints and Python identity. The after measurement includes mandatory capture with SQLite `FULL` commits. These are historical measurements, not a benchmark of every subsequent change.
+
+Environment: macOS ARM64, Python 3.13.3. Each profile starts a fresh process/database, using 20 repeats of the 5,408-byte synthetic Codex fixture and session-list reads in two worker threads. The empty profile reads an empty database. Startup measures app construction/lifespan after Python/module import, not whole-process cold start. The model profile enables all features with dummy mode and performs no model call. Measurements are single runs, sensitive to scheduling/cache noise.
+
+Values are **before → after**:
+
+| Profile | App startup ms | Import median ms | Query p95 ms | Repeated input bytes/s | Peak RSS MiB | DB/disk bytes |
+| --- | --- | --- | --- | --- | --- | --- |
+| Empty | 28.77 → 19.06 | — | 2.66 → 2.40 | — | 56.59 → 55.12 | 118,784 → 135,168 |
+| Import only | 28.77 → 21.37 | 7.16 → 7.42 | 4.65 → 3.38 | 640,909 → 658,732 | 58.20 → 55.84 | 126,976 → 159,744 |
+| Default tracing | 31.85 → 26.14 | 11.50 → 11.28 | 3.75 → 3.92 | 363,263 → 444,112 | 58.80 → 56.91 | 262,144 → 282,624 |
+| Model features | 37.68 → 30.92 | 11.22 → 11.83 | 3.43 → 3.23 | 428,433 → 418,810 | 59.48 → 57.41 | 262,144 → 282,624 |
+
+CPU seconds for the same runs: empty 0.050 → 0.040; import-only 0.202 → 0.193; default 0.327 → 0.275; model profile 0.298 → 0.295. The JSON also records medians, wall time and inserted counts. Each ingestion profile inserts 24 unique events; repeated-input throughput is mostly deduplicated retries, not sustained unique-event capacity.
+
+The old import-only profile retained **zero** full source bytes, so it is not an equivalent completeness/durability workload. All new ingestion profiles retain the full 5,408-byte source plus attempt metadata; successful Codex imports also keep the line archive for evidence indexing. Storage increased, while startup decreased in these runs. This does not establish a statistically significant overall speedup.
+
+PERF-01 remains partially verified. Still needed: agreed throughput/latency/resource budgets, growing representative datasets, existing-data empty-profile timing, sustained concurrent writes/reads, stats/export tail latency, filesystem write volume, optional-analysis load and upstream agent overhead. One SQLite writer, full snapshot storage, duplicate transport/line archives, uncached usage/unified scans and parser pending state are concrete scaling costs. Measure these before selecting lossless storage optimization, materialization or another implementation language.
 
 ## Experiment storage
 
