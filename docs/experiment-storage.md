@@ -4,7 +4,7 @@
 
 ## Current behavior and motivation
 
-The [independent classification report](experiments/2026-09-23-turn-purpose-independent-luna.md#interpretation-and-evidence) documents private inputs, model outputs, comparisons, and logs under the main checkout's ignored `.agentboard/experiments/`. Its published report is versioned; the supporting files are local. The completed one-time migration preserved these originals and added portable bundles at the machine data home, so reports retain their dependencies after worktree removal.
+Evidence for the [independent classification report](experiments/2026-09-23-turn-purpose-independent-luna.md#interpretation-and-evidence) originally lived under the main checkout's ignored `.agentboard/experiments/`. The [completed migration](#local-migration-audit) preserved those private inputs, model outputs, comparisons and logs, and added portable bundles at the configured data home, so reports retain their dependencies after worktree removal. Only the published report is versioned; supporting evidence remains local.
 
 The [development workflow](development.md#automatic-worktree-data-setup) shares a fixed baseline through independent writable dev snapshots. The [experiment CLI](../backend/agentboard/experiments/cli.py) has separate machine settings and dispatches before the trace Runtime. The standard-library [recorder](../backend/agentboard/experiments/archive.py) adds no MLflow dependency. Database snapshots are recovery evidence, not an experiment catalog. This facility does not replace the trace Store or baseline workflow.
 

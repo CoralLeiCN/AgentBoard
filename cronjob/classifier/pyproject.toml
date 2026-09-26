@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "classifier-experiments"
+version = "0.1.0"
+description = "Independent turn-purpose classifier training and comparison experiments"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+ml = [
+    "torch>=2.6,<3",
+    "transformers>=4.51,<5",
+    "sentence-transformers>=5.7,<6",
+    "lightgbm>=4.5,<5",
+    "numpy>=1.26,<3",
+]
+dev = ["pytest>=8,<10", "ruff>=0.11,<1"]
+
+[project.scripts]
+classifier = "classifier.cli:main"
+
+[tool.uv]
+exclude-newer = "7 days"
+
+[tool.hatch.build.targets.wheel]
+packages = ["classifier"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["classifier"]

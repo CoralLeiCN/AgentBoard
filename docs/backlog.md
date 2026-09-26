@@ -68,7 +68,7 @@ Before implementation, define repository ownership/access, immutable revision ma
 
 ## Experiment storage and classification follow-ups
 
-Implementation status and pending work, updated 2026-09-25. This register does not schedule classifier runs. The [specification](specification.md#15-durable-experiment-storage) owns acceptance criteria; the [storage design](experiment-storage.md#migration-and-implementation-sequence) owns implementation order.
+Implementation status and pending work, updated 2026-09-26. This register does not schedule classifier runs. Specification [§15](specification.md#15-durable-experiment-storage) and [§16](specification.md#16-supervised-classifier-comparison) own storage and classifier acceptance criteria; the [storage design](experiment-storage.md#migration-and-implementation-sequence) owns storage implementation order.
 
 | ID | Follow-up | Status / completion evidence |
 | --- | --- | --- |
@@ -76,6 +76,7 @@ Implementation status and pending work, updated 2026-09-25. This register does n
 | EXP-TODO-02 | Import the one current combined dataset and selected historical runs; derive per-model pending coverage. | Completed 2026-09-25: one combined dataset and eight legacy bundles migrated; coverage and verification receipts saved. All 5,484 selected files verified, originals unchanged, repeat import reused all nine IDs. Migration scripts and the legacy import command were subsequently removed; no compatibility layer is maintained. See the [migration audit](experiment-storage.md#local-migration-audit). |
 | EXP-TODO-03 | Run classifiers later on missing or changed-input targets in the 247-session, 1,431-turn dataset. | Pending experiment execution. Preserve existing outputs; the [dated coverage audit](experiment-storage.md#current-dataset-and-pending-classification) identifies 772 missing/changed-input turns per configuration, plus one invalid GPT-5.6 Luna batched result: 773 distinct turns pending across the six configurations. Select model/configuration and explicit target subsets, then save new runs and refreshed coverage reports. No execution or result is implied by this entry. |
 | EXP-TODO-04 | Add the optional private MLflow service, publisher/fetcher, and tested backup/restore. | Accepted, not implemented. Verify complete dependency transfer, separate publication state, retry/conflict handling, access policy, and isolated restoration before selected real-data rollout. |
+| EXP-TODO-05 | Train and evaluate supervised turn-purpose baselines against GPT. | The independent [classifier workflow](../cronjob/classifier/README.md) is implemented. Reference-label selection/adjudication and real-data training/comparison remain pending experiment execution; no accuracy result is implied. |
 
 These tasks do not relocate the shared baseline/dev databases or fix split-session normalization. Existing source evidence and historical runs remain preserved. WL-004 is a later dataset-storage migration, not a prerequisite for local recording or pending classification work.
 

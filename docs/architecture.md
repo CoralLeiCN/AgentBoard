@@ -59,3 +59,5 @@ This is one authenticated shared workspace, with plaintext storage and no tenant
 ## Experiment storage
 
 **Filesystem implemented — 2026-09-25.** Explicit scripts use the [experiment recorder](../backend/agentboard/experiments/archive.py); separate CLI commands discover, verify and analyze portable bundles outside checkouts. They do not construct the trace runtime or modify its SQLite Store. Optional publication to self-hosted MLflow, PostgreSQL metadata and server artifacts remains planned. The [experiment storage design](experiment-storage.md) owns component boundaries, the artifact contract, synchronization, and migration. [Specification §15](specification.md#15-durable-experiment-storage) owns requirements and acceptance criteria.
+
+The independent [classifier experiments](../cronjob/classifier/README.md) live under `cronjob/classifier/` with per-model training scripts and dataclasses, a data/inference utility CLI, dependencies and tests. They are not an AgentBoard application component; only explicit recording reuses the existing archive API.

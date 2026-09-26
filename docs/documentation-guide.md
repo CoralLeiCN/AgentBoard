@@ -11,6 +11,7 @@ For all project documentation:
 7. **Preserve decisions.** Flag conflicting requirements and ask for clarification before changing those points. Routine wording and formatting need no approval. Keep deferred wishes separate from current correctness gaps.
 8. **Maintain the evidence trail.** When behavior changes, update affected docs, examples, and relevant tests together. State version/date where material and explain effects on existing data, reimports, and backfills. Label synthetic or redacted examples.
 9. **Verify.** Check links, examples, arithmetic, and implementation consistency. Include private content only when necessary and authorized.
+10. **Consolidate.** Remove superseded or redirect-only documents and update inbound links to the maintained source. Keep substantive dated experiment reports as historical evidence, with current storage/status notes where needed.
 
 ## Where information belongs
 
@@ -21,6 +22,7 @@ For all project documentation:
 | [Development guide](development.md) | Isolated environment, worktree datasets, checkpoint and recovery setup |
 | [Principles](principles.md) | Enduring product intent and design principles that guide tradeoffs |
 | [Specification](specification.md) | Requirements, status, and acceptance criteria |
+| [Classifier experiment workflow](../cronjob/classifier/README.md) | Classifier scripts/configuration, data formats, commands, artifacts, and verification |
 | [Feature list](features.md) | Mandatory core, optional capability IDs, configuration, and first-party module contract |
 | [Modular feature plan](modular-features-plan.md) | Approved first-party architecture target, Grafana/VS Code/Obsidian lessons, refactor stages, and deferred plugin design |
 | [Architecture](architecture.md) | Components, boundaries, and design choices |
