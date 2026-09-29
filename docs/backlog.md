@@ -72,7 +72,7 @@ Deferred until a concrete external integration cannot reasonably ship with Agent
 
 ## Experiment storage and classification follow-ups
 
-The filesystem recorder, one-time migration and curation module are implemented. The [selected coverage report](experiment-storage.md#dataset-and-classification-coverage) has complete saved results for five independent classifiers; the old missing-target execution item is complete for that selection. These entries track remaining work and do not schedule models or assign human labels.
+The filesystem recorder, one-time migration and curation module are implemented. The [selected coverage report](experiment-storage.md#dataset-and-classification-coverage) has complete saved results for eight independent configurations, including both Luna max extensions; the missing-target execution item is complete for that selection. Seven comparisons use Astra extra-high as the model-generated reference, with recorded cache usage and hypothetical API costs. These entries track remaining work and do not schedule models or assign human labels.
 
 | Follow-up | Status / acceptance source |
 | --- | --- |
@@ -101,4 +101,5 @@ Human/context/internal-input correctness remains tracked in [specification §7](
 | 2026-09-25 | Implemented filesystem storage and completed the subsequently requested local migration. Preserve original evidence and partial coverage; defer model execution and remote publication. The validity-aware audit adds one pending GPT-5.6 Luna result to the earlier input-reuse count. |
 | 2026-09-25 | Retire legacy filesystem migration scripts and the import command after the verified migration. Maintain the recorder/reader and coverage reports; retain immutable migrated evidence and the audit receipt. |
 | 2026-09-26 | The selected report now contains complete results for five independent classifiers. Keep historical subset results unchanged; human verification remains separate from model coverage. |
+| 2026-09-26 | Extend independent coverage with Astra extra-high and both Luna max configurations, keeping low/max distinct. Use Astra as the starting reference instead of Sol, retain seven comparisons across eight configurations and show recorded input cache plus dated API cost estimates. Preserve earlier results and batched archives; human review remains pending. |
 | 2026-09-26 | Implement curation with mixed inferred/verified labels, full-turn duplicate review, reversible removal and configurable local/remote embedding cosine. Retire lexical similarity and earlier workspace compatibility. |

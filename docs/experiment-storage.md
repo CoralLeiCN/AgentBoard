@@ -116,16 +116,84 @@ A coverage run saves the recipe, materialized pinned inputs, standalone standard
 | Model | Reasoning effort | Execution | Available / requested | Pending |
 | --- | --- | --- | ---: | ---: |
 | GPT-6 Luna | low | independent | 1,431 / 1,431 | 0 |
+| GPT-6 Luna | max | independent | 1,431 / 1,431 | 0 |
 | GPT-6 Sol | xhigh | independent | 1,431 / 1,431 | 0 |
+| GPT-6 Astra | xhigh | independent | 1,431 / 1,431 | 0 |
 | GPT-5.6 Sol | xhigh | independent | 1,431 / 1,431 | 0 |
 | GPT-5.6 Terra | low | independent | 1,431 / 1,431 | 0 |
 | GPT-5.6 Luna | low | independent | 1,431 / 1,431 | 0 |
+| GPT-5.6 Luna | max | independent | 1,431 / 1,431 | 0 |
 
-All five configurations use `session-purpose-v1`. This establishes usable saved results under the coverage checks, not human verification or classification accuracy. Older batched/subset runs remain historical evidence with their original coverage; their migration-era pending counts do not describe this selected report. Curation can use GPT-6 Sol xhigh, independent, as its inferred reference. Human adjudication remains a separate step.
+All eight configurations use `session-purpose-v1`: **11,448 usable independent labels, zero pending**. Low and max reasoning remain separate configurations. All three empty targets are retained and received `other` from every configuration. This establishes usable saved results under the coverage checks, not human verification or classification accuracy. Older batched/subset runs remain historical evidence with their original coverage; batched results were retired from active coverage/comparison only after the independent replacement passed verification.
+
+The user selected **GPT-6 Astra xhigh, independent**, as the starting reference answers on September 26, superseding GPT-6 Sol. Its saved categories and reasons are pinned to source results and complete input hashes; human review has not been performed. All seven other configurations are compared only with Astra over the same 1,431 targets. Curation must explicitly select its inferred reference; human adjudication remains a separate step.
 
 Coverage is calculated per pinned report by session/turn identity, full classifier-input hash (including predecessor context), model, effort, execution and taxonomy. Missing, invalid or changed-input results stay pending; incompatible configurations never fill one another's gaps. Each report retains its denominator and excluded targets. A later dataset or classifier execution creates new immutable artifacts; neither old results nor historical execution outcomes are rewritten.
 
 `sync/current-classification.json` is rebuildable machine-local navigation to pinned artifacts, not an authoritative result or a document to commit. `curate --current` resolves its coverage recipe and saves exact references. Future reports may select different results; use archived manifests and the [filesystem commands](#filesystem-commands-and-producer-api) to inspect them.
+
+### Reference agreement and estimated API cost
+
+**Dated aggregate observations, 2026-09-26.** Agreement means category matches with Astra's model-generated answers, not accuracy against human ground truth. Every row covers 1,431 successful independent classifications; the reference cost is shown separately and is not added to each comparator.
+
+| Independent configuration | Matches with Astra | Agreement | Estimated API cost, USD | Estimated USD per turn |
+| --- | ---: | ---: | ---: | ---: |
+| GPT-6 Astra extra-high | Reference | — | $237.73 | $0.16613 |
+| GPT-6 Sol extra-high | 1,295 | 90.50% | $45.99 | $0.03214 |
+| GPT-5.6 Luna max | 1,243 | 86.86% | $4.24 | $0.00296 |
+| GPT-6 Luna max | 1,235 | 86.30% | $2.31 | $0.00161 |
+| GPT-5.6 Sol extra-high | 1,227 | 85.74% | $87.87 | $0.06141 |
+| GPT-5.6 Terra low | 1,138 | 79.52% | $44.10 | $0.03082 |
+| GPT-5.6 Luna low | 1,101 | 76.94% | $3.95 | $0.00276 |
+| GPT-6 Luna low | 1,091 | 76.24% | $2.17 | $0.00152 |
+
+Relative to the saved low-effort results, GPT-6 Luna max gained 10.06 percentage points of agreement for an estimated additional $0.14; GPT-5.6 Luna max gained 9.92 points for $0.29. These observations apply to this dataset and reference, not a general model ranking.
+
+Prices use the [Standard, short-context API rate card](https://developers.openai.com/api/docs/pricing) saved on **2026-09-26**. They are hypothetical estimates from the recorded OAuth usage, not observed OAuth charges. A real API rerun may consume different tokens or cache writes. Refresh the dated rates before presenting a later pricing comparison.
+
+| Model | Input USD / 1M tokens | Cached input USD / 1M tokens | Output USD / 1M tokens |
+| --- | ---: | ---: | ---: |
+| GPT-6 Astra | $10.00 | $1.00 | $50.00 |
+| GPT-6 Sol | $2.00 | $0.20 | $10.00 |
+| GPT-5.6 Sol | $4.00 | $0.40 | $20.00 |
+| GPT-5.6 Terra | $2.00 | $0.20 | $12.00 |
+| GPT-5.6 Luna | $0.20 | $0.02 | $1.20 |
+| GPT-6 Luna | $0.10 | $0.01 | $0.50 |
+
+The calculation is `((input - cached_input) × input_rate + cached_input × cached_rate + output × output_rate) / 1,000,000`. Input includes cached input; output includes reasoning, so neither subset is added again. The saved rate card uses GPT-5.6 Sol's promotional rate. All 11,448 successful results have usage; the largest input is 63,242 tokens, below the saved 272K long-context threshold. Cache writes were zero. The estimates exclude unknown failed-attempt usage, additional reruns, taxes, regional uplifts and other service tiers.
+
+### Recorded usage and input cache
+
+Counts cover the same 1,431 successful classifications per configuration, including the 659 reused GPT-6 Luna low results. Total tokens are input plus output; cache writes are zero for every configuration.
+
+| Independent configuration | Input tokens | Cached input subset | Cached share | Calls with cache hits | Output tokens |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| GPT-6 Astra extra-high | 22,696,932 | 0 | 0% | 0 | 215,126 |
+| GPT-6 Sol extra-high | 22,025,373 | 0 | 0% | 0 | 193,878 |
+| GPT-5.6 Luna max | 19,236,249 | 0 | 0% | 0 | 326,423 |
+| GPT-6 Luna max | 21,771,784 | 28,160 | 0.129% | 2 | 264,146 |
+| GPT-5.6 Sol extra-high | 21,426,027 | 0 | 0% | 0 | 108,448 |
+| GPT-5.6 Terra low | 21,423,304 | 0 | 0% | 0 | 104,848 |
+| GPT-5.6 Luna low | 19,248,473 | 30,464 | 0.158% | 1 | 90,989 |
+| GPT-6 Luna low | 21,375,207 | 50,432 | 0.236% | 3 | 70,613 |
+
+### Execution evidence and limits
+
+Each call used the same eight-category rubric, one target per fresh ephemeral Codex process and immediately preceding turn context, with no saved labels or later turns. Input hashes match the pinned dataset. The user explicitly authorized these dataset experiments through ChatGPT OAuth; application integration tests retain their [isolated private-endpoint policy](testing.md#private-model-tests). New calls used CLI 0.157.0, read-only sandbox and ignored user configuration/rules; the 659 reused GPT-6 Luna low results used CLI 0.155.1. Provider revision and sampling state are unknown, so identical inputs do not establish identical runtime conditions.
+
+The 772 pending GPT-6 Luna low targets completed without retries. The original four remaining models produced 5,724 valid results in 5,746 process attempts: 20 authentication interruptions and two capacity failures were retried successfully; all 22 failed attempts lack usage. A narrowly scoped validator correction revalidated 474 completed HTTPS-recovered calls without new model calls, retaining original verdicts and logs. Astra and each Luna max configuration subsequently completed 1,431 targets in 1,431 attempts each. All available results passed recorded structural/compliance checks, with no model tool calls; these checks do not establish semantic accuracy.
+
+Current immutable evidence is indexed by the following bundles; full inputs, outputs, attempts, scripts, rate-card snapshot and pinned dependencies remain private under the configured data home:
+
+| Evidence | Bundle ID |
+| --- | --- |
+| Eight-configuration comparison, API estimates and cache | `d558c078-de57-4c90-b4fa-6cba4453470c` |
+| Eight-configuration coverage | `3ac2cb59-a635-4fea-bdb2-08fb1ceef143` |
+| Unchanged Astra starting reference answers | `bfeca1b2-46a8-4fb7-b909-09463d776fe6` |
+| Batched-retirement receipt | `47a42f42-c244-4c81-9ca5-ed96559aa2f7` |
+
+The completed experiments verified identities, full input/schema hashes, original outputs/logs, requested model/effort and usage. Synthetic checks rejected missing, duplicate, stale, batched and incompatible results; pricing checks covered cached discounts, reasoning counted once and invalid usage. Direct source recounts matched all seven agreement totals. Archive/dependency verification and byte-identical offline regeneration passed before navigation changed. Adding the two max configurations preserved all six prior result sets, five prior agreement/kappa pairs, six prior API estimates and Astra's reference answers. Earlier reports and original attempts remain immutable. These are experiment checks; no application/backend/frontend, browser, private-endpoint or app-server schema checks were run for this documentation-only update.
+
 ## Future dataset storage
 
 **Deferred direction:** move dataset version storage to Hugging Face while keeping experiment results in this archive. Initially, datasets use `experiments/datasets/`. Keep logical dataset identity, immutable content/version references, subset selection, and hashes separate from their storage location, so a later adapter can resolve the same evidence elsewhere.
