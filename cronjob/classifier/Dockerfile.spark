@@ -1,0 +1,7 @@
+FROM nvcr.io/nvidia/pytorch@sha256:bbc2b67e2533edd63ff1496bb1ed00a00338cdc1478af6c1a0bf9f4b369977e7
+
+# Retain NVIDIA's ARM64/CUDA PyTorch build. Do not install the generic torch wheel.
+RUN python -m pip install --no-cache-dir transformers==4.57.6 \
+    fastapi==0.141.1 uvicorn==0.52.4 scikit-learn==1.9.1 pytest==9.0.2 httpx==0.28.1
+ENV PYTHONUNBUFFERED=1 TOKENIZERS_PARALLELISM=false HF_HUB_DISABLE_TELEMETRY=1
+WORKDIR /workspace/cronjob/classifier

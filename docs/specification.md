@@ -1,6 +1,6 @@
 # AgentBoard product specification
 
-Updated: 2026-09-26 (supervised classifiers, curation maintenance and documentation consolidation)
+Updated: 2026-10-04
 
 Agreed requirements, implementation status, and acceptance criteria for AgentBoard, guided by the [product and design principles](principles.md). Codex compatibility is limited to supported source variants.
 
@@ -182,6 +182,8 @@ Treat persisted Codex rollouts as a version-dependent format. Do not assume a st
 | Separate structural validation from interpretation. | JSON/payload/timestamp checks are partial (DQ-14). Valid structure or `role: "user"` does not establish human authorship. Rollout input attribution uses explicit source metadata and context envelopes; it remains inferred (INPUT-01/DQ-01). |
 
 For a new supported variant, add a synthetic or redacted fixture, document source fields and transformations, and verify raw round-trip preservation and intended normalized behavior. Record the producing version when known, the mapping version, and effects on existing imports. These are change-review requirements, not claims of compatibility with every Codex release.
+
+**IMP-06 — Implemented 2026-10-04.** Import paginated subagent rollouts containing an initial child header followed immediately by explicitly linked inherited parent metadata. Preserve child identity, metadata, start time, producer and field lineage; retain all source bytes and normalize subsequent history under the child. Reject unproven or later session-ID changes atomically. The [exact evidence checks and existing-data treatment](data-lineage.md#32-session-and-context-mapping) belong to mapping `codex-jsonl-v7`. Acceptance includes synthetic raw-roundtrip, input-attribution, lineage, retry/growth and rejection regressions. Shared-history accounting remains [DQ-15](data-quality-gaps.md); this support does not establish unique cross-session usage.
 
 **App-server baseline — Implemented:** the repository retains generated API schemas and a CLI-version/hash manifest. The [schema workflow](../schemas/README.md) provides offline integrity verification, installed-CLI drift checks, and explicit regeneration for Git review. Regular tests validate the stored baseline without Codex. This does not validate raw rollout files or establish semantic compatibility of every API method.
 
@@ -415,6 +417,27 @@ Generate strict structured-output schemas from the enum-backed Pydantic label mo
 
 Bound classification context to 60,000 characters by default, preferring one conversation source and excluding tool bodies. Report truncation, input/prompt hashes, source event IDs, taxonomy version, and classification time. Missing usable text is an error. Treat imported transcript content as data rather than instructions to the classifier. See [selection and limitations](data-lineage.md#10-model-derived-data-and-continuation).
 
+#### Turn-purpose encoder v1
+
+**Implemented; Base and Large comparisons complete, 2026-09-29.** The [full experiment plan](turn-classifier-plan.md) owns the accepted workflow. The [execution record](turn-classifier-run.md) records frozen data, environment, checks, results and operational commands. Both validation-selected checkpoints were served on separate Spark ports; the execution record owns current deployment status. Large completed the authorized follow-up within the 80 GB allowance; results are Astra agreement on the frozen validation and reused test sets, not human-verified accuracy or a fresh holdout estimate.
+
+The [comparison report](turn-classifier-comparison.md) records every Base/Large run, training/validation loss curves, fixed-checkpoint diagnostics, seed variability, compute trade-offs and evidence-based underfitting/overfitting analysis. Derived reports must retain source archive/checkpoint pins, distinguish in-epoch training loss from fixed-checkpoint evaluation, and preserve unsuccessful or weak candidates. Preserve raw data and plotting scripts for these figures; documentation retains PNGs without requiring SVG copies. Follow-up training proposals are not execution authorization.
+
+**Incremental classification, completed 2026-10-04.** Run the existing classifier experiments on eligible newly imported turns through 3 October, preserving previous labels by session/turn identity and full input hash. The cohort adds 484 turns; all 1,431 earlier inputs are unchanged. Apply the frozen Base/Large checkpoints without retraining, retain complete execution evidence, and distinguish previously seen sessions from new sessions. The user selected both encoders and all eight GPT model/effort configurations and explicitly authorized sending the new turns with predecessor context through their ChatGPT account. All 4,840 new predictions are complete; combined GPT coverage is 1,915 turns per configuration. [Results and limits](turn-classifier-run.md#incremental-inference-through-3-october-2026) distinguish model-to-model agreement from agreement with reference labels.
+
+**Post-run cleanup, accepted 2026-10-04.** Stop the experiment's Spark services after execution and verification, preserving checkpoints, logs and archives. Before handoff, verify that its containers and GPU processes have exited and its inference ports are closed. This is an operational requirement; persistent serving requires a separate user request.
+
+Requirements:
+
+- Classify individual turns using saved GPT-6 Astra xhigh, independent labels and the unchanged eight-category taxonomy. Preserve complete source inputs, reference answers and provenance.
+- Select the same target/preceding-turn text as the historical LLM classifier, with explicit token truncation for v1. Use a standard encoder classifier; defer chunking and aggregation.
+- Keep whole sessions disjoint across chronological training, validation and test partitions; document boundary overlap and audit related conversations for leakage.
+- Train and serve on the owner's local Spark using a dedicated encoder harness. Existing session classification and Codex/LLM test contracts remain separate.
+- Compare ModernBERT-large with the frozen Base inputs, labels, session assignments and 8,192-token truncation. Keep effective batch 16 and the bounded learning-rate/seed comparison. Measure faster attention, larger physical batches and disabling gradient checkpointing within an 80,000,000,000-byte budget; record the chosen configuration and observed memory. Regularization and supervision changes remain separate experiments.
+- Select Large using validation only. Because the original test results have already been inspected, label the repeated test evaluation a retrospective comparison, not an untouched estimate of generalization. A fresh later holdout is required for a new unbiased evaluation claim.
+
+Acceptance requires reproducible artifacts, validated input/split integrity, identical training/serving preprocessing, a working dedicated service, and a report of Astra agreement, per-category quality, truncation effects and measured serving performance. Report rare-class and reference-label limitations; no numerical quality threshold or production-readiness claim is established. Detailed [verification](turn-classifier-plan.md#9-verification-and-acceptance) and [trade-offs](turn-classifier-plan.md#10-trade-offs-limitations-and-follow-ups) belong to the plan.
+
 ### 10.2 Transcript replay
 
 **BRANCH-01 — Implemented**
@@ -584,7 +607,7 @@ The maintained filesystem scope includes the local recorder/reader and coverage 
 
 ## 16. Supervised classifier comparison
 
-**Implemented 2026-09-26; real-data execution pending.** Compare a fine-tuned BERT-like classifier, LightGBM over frozen embeddings, and saved GPT predictions for the existing eight-category turn-purpose task. Requirements cover data preparation, fixed splits, training, inference and evaluation.
+**Implemented 2026-09-26; older BERT/LightGBM real-data execution pending.** Compare a fine-tuned BERT-like classifier, LightGBM over frozen embeddings, and saved GPT predictions for the existing eight-category turn-purpose task. Requirements cover data preparation, fixed splits, training, inference and evaluation. The separately authorized ModernBERT run is documented [above](#turn-purpose-encoder-v1).
 
 The dedicated `cronjob/classifier/` project owns all experiment code, tests and dependencies. Training uses one script per model with its configuration dataclass in that script. AgentBoard application code, CLI and root dependencies remain unchanged; only explicit archive recording may reuse the existing recorder API. The [classifier workflow](../cronjob/classifier/README.md) owns current interfaces, data formats, commands and verification. The non-training utility CLI is an implementation convenience, not a required training interface.
 
@@ -598,6 +621,8 @@ The dedicated `cronjob/classifier/` project owns all experiment code, tests and 
 | CLS-06 | Keep private inputs and artifacts in ignored local working storage; explicitly archive complete experiment evidence with the filesystem recorder. Include source/lock snapshots and saved inputs for offline comparison. Synthetic offline regressions cover splits, provenance, failure handling, training adapters and reload contracts. Live tests follow the private endpoint policy; implementation does not imply a trained real model or measured accuracy. |
 | CLS-07 | Keep the complete classifier project under `cronjob/classifier/`, with its own scripts, dependency manifest/lock and tests. Preparation, training, inference and comparison must run without importing/installing AgentBoard. AgentBoard application files, root dependencies and CLI remain unchanged. An explicit optional archive adapter may reuse the existing recorder; saved comparison code must run independently after restoration. |
 | CLS-08 | Launch each model directly from `train_bert.py` or `train_lightgbm.py`; no shared training launcher is required. Define the model's configuration dataclass in that same script, including paths, runtime settings and training hyperparameters; the LightGBM configuration also owns embedding creation/cache settings. Script execution uses an editable default config, while Python callers can pass a config instance. Save the effective configuration with artifacts and test nondefault settings. |
+
+The separately versioned [ModernBERT Spark workflow](turn-classifier-run.md) extends this project. Its approved Astra supervision and chronological whole-session split supersede the default human-label preference and coverage-adaptive split for that experiment only. It uses explicit preparation/training/service scripts and a dedicated encoder test harness, without Codex. Its public-weight download is a separate explicit command; training and serving load local pinned files.
 
 ## 17. Dataset curation
 

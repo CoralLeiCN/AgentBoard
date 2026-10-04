@@ -11,6 +11,8 @@ Import Codex sessions and inspect LLM/tool timing in a mandatory browser dashboa
 | [Classifier experiments](cronjob/classifier/README.md) | Independent BERT-like and embedding/LightGBM training, inference and saved-GPT comparison |
 | [Experiment storage](docs/experiment-storage.md) | Filesystem archive, pinned coverage reports and planned MLflow publication |
 | [Dataset curation](docs/dataset-curation.md) | Human label review, configurable embedding cosine, full-turn duplicate review and exports |
+| [Turn classifier v1 plan](docs/turn-classifier-plan.md) | ModernBERT workflow, Astra labels, truncation, chronological splits and Spark serving |
+| [Base vs Large report](docs/turn-classifier-comparison.md) | Recorded experiments, loss curves, seed variability and underfitting/overfitting analysis |
 | [Data lineage](docs/data-lineage.md) | Raw mappings, timing, reimports, evidence limits |
 | [Data-quality gaps](docs/data-quality-gaps.md) | Correctness concerns and proposed checks |
 | [Backlog](docs/backlog.md) | Future capacity, languages, and integrations |

@@ -111,17 +111,22 @@ A coverage run saves the recipe, materialized pinned inputs, standalone standard
 
 ## Dataset and classification coverage
 
-**Verified from the pinned local coverage report on 2026-09-26.** The selected combined dataset contains **247 user sessions and 1,431 turn targets**: local sessions through September 24 plus Spark. The local cutoff is `2026-09-25T00:00:00+01:00`, exclusive (Europe/London). Selection applies to classifier inputs; complete source rollouts remain intact.
+**Verified from the pinned local coverage report on 2026-10-04.** The selected combined dataset contains **311 user sessions and 1,915 turn targets** from local and Spark sources. The latest import cutoff is `2026-10-04T00:00:00+01:00`, exclusive (Europe/London); complete files spanning it were excluded. The earlier 1,431 inputs and labels are preserved, and all eight configurations classified 484 added turns. See the [incremental execution record](turn-classifier-run.md#incremental-inference-through-3-october-2026) for selection, frozen encoder results and evaluation limits.
 
 | Model | Reasoning effort | Execution | Available / requested | Pending |
 | --- | --- | --- | ---: | ---: |
-| GPT-6 Luna | low | independent | 1,431 / 1,431 | 0 |
-| GPT-6 Sol | xhigh | independent | 1,431 / 1,431 | 0 |
-| GPT-5.6 Sol | xhigh | independent | 1,431 / 1,431 | 0 |
-| GPT-5.6 Terra | low | independent | 1,431 / 1,431 | 0 |
-| GPT-5.6 Luna | low | independent | 1,431 / 1,431 | 0 |
+| GPT-6 Astra | xhigh | independent | 1,915 / 1,915 | 0 |
+| GPT-6 Sol | xhigh | independent | 1,915 / 1,915 | 0 |
+| GPT-6 Luna | low | independent | 1,915 / 1,915 | 0 |
+| GPT-6 Luna | max | independent | 1,915 / 1,915 | 0 |
+| GPT-5.6 Sol | xhigh | independent | 1,915 / 1,915 | 0 |
+| GPT-5.6 Terra | low | independent | 1,915 / 1,915 | 0 |
+| GPT-5.6 Luna | low | independent | 1,915 / 1,915 | 0 |
+| GPT-5.6 Luna | max | independent | 1,915 / 1,915 | 0 |
 
-All five configurations use `session-purpose-v1`. This establishes usable saved results under the coverage checks, not human verification or classification accuracy. Older batched/subset runs remain historical evidence with their original coverage; their migration-era pending counts do not describe this selected report. Curation can use GPT-6 Sol xhigh, independent, as its inferred reference. Human adjudication remains a separate step.
+All eight configurations use `session-purpose-v1`. Coverage archive `3429c4e0-c111-4ed1-a557-6d8b851787fd` pins the expanded dataset and consolidated results, with zero pending targets. This establishes usable saved results under the coverage checks, not human verification or classification accuracy. Older batched/subset runs remain historical evidence with their original coverage. The incremental comparison uses Astra xhigh; curation can still use GPT-6 Sol xhigh, independent, as its inferred reference. Human adjudication remains a separate step.
+
+Consolidation matches session/turn identity and full input hash. It rebases `index`, `session_index`, `turn_number` and `previous_turn_index` to the expanded cohort while preserving categories, reasons and input hashes. Each row retains `source_result_index` and a pinned `source_reference` to the original record; original archived bytes remain unchanged.
 
 Coverage is calculated per pinned report by session/turn identity, full classifier-input hash (including predecessor context), model, effort, execution and taxonomy. Missing, invalid or changed-input results stay pending; incompatible configurations never fill one another's gaps. Each report retains its denominator and excluded targets. A later dataset or classifier execution creates new immutable artifacts; neither old results nor historical execution outcomes are rewritten.
 

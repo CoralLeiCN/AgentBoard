@@ -49,6 +49,7 @@ For a fix, record mapping/version, source variants, tests, metric changes, and e
 
 | Date | Review outcome |
 | --- | --- |
+| 2026-10-04 | `codex-jsonl-v7` accepts the observed paginated subagent child/parent header pair while preserving child identity and complete raw history. [Rules and synthetic regressions](data-lineage.md#32-session-and-context-mapping) cover explicit parent matching, lineage, internal inputs, retries and atomic failures. Previously rejected captures require explicit reprocessing; cross-session inherited-history overcounting (DQ-15) remains open. |
 | 2026-09-06 | Created from source review and focused temporary-data reproductions at the user's request for a dedicated data-correctness reference. No behavior changes or gap closures were made as part of documenting these findings. |
 | 2026-09-06 | Consolidated the accepted [rollout compatibility policy](specification.md#35-codex-rollout-compatibility-policy); unsupported-record reporting, origin classification, and complete event-to-source linkage remain open. Documentation only. |
 | 2026-09-06 | Dashboard verification added live evidence to DQ-12; correlation remains open and stored rows were unchanged. Fixed Timeline pagination to filter operation kinds before page limits ([regression](../backend/tests/test_api_models.py)); event-only sources now explain their coverage. Parallel membership and normalized exports are unchanged. |
