@@ -1,8 +1,22 @@
 # Supervised turn-purpose classifiers
 
-**Implemented 2026-09-26; real-data execution pending.** Train a BERT-like encoder with [train_bert.py](train_bert.py), or LightGBM over frozen embeddings with [train_lightgbm.py](train_lightgbm.py). Each script owns its configuration dataclass and training loop. [Specification §16](../../docs/specification.md#16-supervised-classifier-comparison) defines requirements; this page describes the implemented workflow.
+**Implemented 2026-09-26; older BERT/LightGBM execution pending.** Train a BERT-like encoder with [train_bert.py](train_bert.py), or LightGBM over frozen embeddings with [train_lightgbm.py](train_lightgbm.py). Each script owns its configuration dataclass and training loop. [Specification §16](../../docs/specification.md#16-supervised-classifier-comparison) defines requirements; this page describes the implemented workflow.
 
 This project has its own dependencies, lockfile and tests. Preparation, training, inference and comparison run independently of AgentBoard; optional archive recording uses its existing recorder API. The [utility CLI](classifier/cli.py) currently provides preparation, inference, saved-GPT comparison and recording commands. It is a convenience for those operations, with no training subcommands; each training script runs directly.
+
+## ModernBERT on Spark
+
+**Implemented; Base and Large comparisons complete, 2026-09-29.** The [Spark execution record](../../docs/turn-classifier-run.md) describes preparation, training, serving and measured results. This separately versioned workflow uses all saved Astra labels, chronological session/fork groups, 8,192-token right truncation, a bounded learning-rate/seed comparison and a dedicated FastAPI service. Its optional dependencies are in the `encoder` extra; Spark uses the pinned NVIDIA image in [Dockerfile.spark](Dockerfile.spark) to retain its ARM64 CUDA PyTorch build. These defaults differ from the older BERT/LightGBM workflow below.
+
+The [Base vs Large report](../../docs/turn-classifier-comparison.md) owns the ten-run comparison, loss figures, fixed-checkpoint diagnostics and fit analysis. Its aggregate inputs, plotting/PDF scripts and figures are preserved in a separate report archive with both original experiments pinned as dependencies.
+
+| Entry point | Contract |
+| --- | --- |
+| [download_modernbert.py](download_modernbert.py) | Explicit public-weight download. `--model-id` accepts `answerdotai/ModernBERT-base` (default) or `answerdotai/ModernBERT-large`; pins the resolved revision and file hashes. |
+| [prepare_turn_encoder.py](prepare_turn_encoder.py) | Verify Astra sources, group sessions chronologically and cache truncated tokens. Optional `--match-dataset` verifies identical membership, labels, input hashes and token IDs against a previous sealed dataset before sealing the new one. |
+| [benchmark_modernbert.py](benchmark_modernbert.py) | Compare disposable Large models using training inputs only, including full-length stress updates and initial-score parity. Record failures, timings and memory; choose the fastest passing setting. |
+| [train_modernbert.py](train_modernbert.py) | Smoke/save/reload, bounded five-run comparison and validation selection. Optional attention, fused AdamW, checkpointing, physical batch/token budgets and memory caps preserve effective batch 16. Repeated test reports carry `--evaluation-policy reused-holdout-comparison`. |
+| [serve_turn_encoder.py](serve_turn_encoder.py) | Load a hash-pinned selection on Spark, restoring the saved attention backend and shared preprocessing. No Codex harness. |
 
 ## Inputs and label provenance
 
@@ -148,13 +162,13 @@ Available-only scores may use different subsets. **Use paired scores to compare 
 Run the [routine checks](../../docs/testing.md#routine-checks-before-handoff). The independent tests are outside the backend suite. Run `uv run --project cronjob/classifier --extra dev pytest cronjob/classifier/tests -q` for the core checks; archive and ML tests skip when their optional dependencies are absent. Include the ML packages and existing archive adapter to exercise every test:
 
 ```sh
-uv run --project cronjob/classifier --locked --extra dev --extra ml --with . \
+uv run --project cronjob/classifier --locked --extra dev --extra ml --extra encoder --with . \
   pytest cronjob/classifier/tests -q
 uv run --project cronjob/classifier --locked --extra dev ruff check cronjob/classifier
 uv run --project cronjob/classifier --locked --extra dev ruff format --check cronjob/classifier
 ```
 
-Live model tests remain restricted to the [isolated private harness](../../docs/testing.md#private-model-tests). Real-data training, human adjudication, hyperparameter studies and final GPT performance measurements are separate experiment execution. The pipeline does not claim to have run them.
+Codex/LLM tests remain restricted to the [isolated private harness](../../docs/testing.md#private-model-tests). The user explicitly authorized the separate local Spark encoder harness; its dated results belong in the [execution record](../../docs/turn-classifier-run.md#verification). Human adjudication and additional GPT performance measurements remain separate experiment execution.
 
 **Verified 2026-09-26 after the style refactor:**
 
@@ -167,6 +181,6 @@ Live model tests remain restricted to the [isolated private harness](../../docs/
 
 The first ML test attempt could not load LightGBM because this macOS host lacked a discoverable OpenMP runtime. The successful run set `DYLD_LIBRARY_PATH` to `cronjob/classifier/.venv/lib/python3.13/site-packages/torch/lib` (an absolute path on this host), using the installed PyTorch library for that process; no system library was installed.
 
-Browser, live-provider and CLI schema-upgrade checks were not run: no UI, provider integration or Codex schema changed. Real-data training and final performance measurements remain pending.
+Browser, live-provider and CLI schema-upgrade checks were not run: no UI, provider integration or Codex schema changed. The older BERT/LightGBM real-data comparison remains pending; the Spark encoder has its own execution record.
 
 API contracts follow the primary [Transformers auto-model documentation](https://huggingface.co/docs/transformers/v4.57.1/en/model_doc/auto), [Sentence Transformer model API](https://www.sbert.net/docs/package_reference/sentence_transformer/model.html) and [LightGBM training API](https://lightgbm.readthedocs.io/en/stable/pythonapi/lightgbm.train.html). Dependency versions are locked in the repository; a later model architecture may require a deliberate dependency update.

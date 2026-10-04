@@ -29,8 +29,23 @@ def command_text(command):
     return json.dumps(command, ensure_ascii=False)
 
 
+def inherited_parent_id(metadata: dict) -> str | None:
+    """Recognize the copied parent header in observed paginated subagent rollouts."""
+    source = metadata.get("source")
+    parent = metadata.get("forked_from_id")
+    if (
+        metadata.get("history_mode") == "paginated"
+        and isinstance(parent, str) and parent
+        and parent == metadata.get("parent_thread_id")
+        and (source == "subagent" or isinstance(source, dict) and "subagent" in source)
+        and parent == session_input_origin(metadata)["parent_session_id"]
+    ):
+        return parent
+    return None
+
+
 class CodexAdapter:
-    mapping_version = "codex-jsonl-v6"
+    mapping_version = "codex-jsonl-v7"
 
     def __init__(self, *, field_lineage=True):
         self.field_lineage = field_lineage
@@ -45,6 +60,7 @@ class CodexAdapter:
         seen_inputs = {}
         fallback_inputs = {}
         session = None
+        pending_parent_header = None
         seq = 0
         waiting_since = None
         lineage = CodexLineage() if self.field_lineage else None
@@ -128,10 +144,18 @@ class CodexAdapter:
                 ts = normalize_timestamp(r["timestamp"])
             except (ValueError, KeyError, TypeError, AttributeError) as exc:
                 raise ValueError(f"Invalid Codex record on line {seq}: {type(exc).__name__}") from exc
+            expected_parent, pending_parent_header = pending_parent_header, None
             if outer == "session_meta":
                 new_sid = p.get("id") or p.get("session_id")
+                if expected_parent is not None and new_sid != sid and new_sid == expected_parent:
+                    # This is copied history, not a new owner of the rollout.
+                    # RawLine above retains the header without changing lineage,
+                    # producer attribution, or the child's Session metadata.
+                    continue
                 if not isinstance(new_sid, str) or not new_sid or (sid and new_sid != sid):
                     raise ValueError("Expected one session per rollout with a valid session_meta id")
+                if sid is None:
+                    pending_parent_header = inherited_parent_id(p)
                 sid = new_sid
                 session = Session(
                     id=sid,

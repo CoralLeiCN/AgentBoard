@@ -111,22 +111,24 @@ A coverage run saves the recipe, materialized pinned inputs, standalone standard
 
 ## Dataset and classification coverage
 
-**Verified from the pinned local coverage report on 2026-09-26.** The selected combined dataset contains **247 user sessions and 1,431 turn targets**: local sessions through September 24 plus Spark. The local cutoff is `2026-09-25T00:00:00+01:00`, exclusive (Europe/London). Selection applies to classifier inputs; complete source rollouts remain intact.
+**Verified from the pinned local coverage report on 2026-10-04.** The selected combined dataset contains **311 user sessions and 1,915 turn targets** from local and Spark sources. The latest import cutoff is `2026-10-04T00:00:00+01:00`, exclusive (Europe/London); complete files spanning it were excluded. The earlier 1,431 inputs and labels are preserved, and all eight configurations classified 484 added turns. See the [incremental execution record](turn-classifier-run.md#incremental-inference-through-3-october-2026) for selection, frozen encoder results and evaluation limits.
 
 | Model | Reasoning effort | Execution | Available / requested | Pending |
 | --- | --- | --- | ---: | ---: |
-| GPT-6 Luna | low | independent | 1,431 / 1,431 | 0 |
-| GPT-6 Luna | max | independent | 1,431 / 1,431 | 0 |
-| GPT-6 Sol | xhigh | independent | 1,431 / 1,431 | 0 |
-| GPT-6 Astra | xhigh | independent | 1,431 / 1,431 | 0 |
-| GPT-5.6 Sol | xhigh | independent | 1,431 / 1,431 | 0 |
-| GPT-5.6 Terra | low | independent | 1,431 / 1,431 | 0 |
-| GPT-5.6 Luna | low | independent | 1,431 / 1,431 | 0 |
-| GPT-5.6 Luna | max | independent | 1,431 / 1,431 | 0 |
+| GPT-6 Astra | xhigh | independent | 1,915 / 1,915 | 0 |
+| GPT-6 Sol | xhigh | independent | 1,915 / 1,915 | 0 |
+| GPT-6 Luna | low | independent | 1,915 / 1,915 | 0 |
+| GPT-6 Luna | max | independent | 1,915 / 1,915 | 0 |
+| GPT-5.6 Sol | xhigh | independent | 1,915 / 1,915 | 0 |
+| GPT-5.6 Terra | low | independent | 1,915 / 1,915 | 0 |
+| GPT-5.6 Luna | low | independent | 1,915 / 1,915 | 0 |
+| GPT-5.6 Luna | max | independent | 1,915 / 1,915 | 0 |
 
-All eight configurations use `session-purpose-v1`: **11,448 usable independent labels, zero pending**. Low and max reasoning remain separate configurations. All three empty targets are retained and received `other` from every configuration. This establishes usable saved results under the coverage checks, not human verification or classification accuracy. Older batched/subset runs remain historical evidence with their original coverage; batched results were retired from active coverage/comparison only after the independent replacement passed verification.
+All eight configurations use `session-purpose-v1`. Coverage archive `3429c4e0-c111-4ed1-a557-6d8b851787fd` pins the expanded dataset and consolidated results, with zero pending targets. Low and max reasoning remain separate configurations. This establishes usable saved results under the coverage checks, not human verification or classification accuracy. Older batched/subset runs remain historical evidence with their original coverage; batched results were retired from active coverage/comparison only after the independent replacement passed verification.
 
-The user selected **GPT-6 Astra xhigh, independent**, as the starting reference answers on September 26, superseding GPT-6 Sol. Its saved categories and reasons are pinned to source results and complete input hashes; human review has not been performed. All seven other configurations are compared only with Astra over the same 1,431 targets. Curation must explicitly select its inferred reference; human adjudication remains a separate step.
+The user selected **GPT-6 Astra xhigh, independent**, as the starting reference answers on September 26, superseding GPT-6 Sol. Its saved categories and reasons are pinned to source results and complete input hashes; human review has not been performed. All seven other configurations are compared only with Astra over the selected denominator, including the incremental comparison. Curation must explicitly select its inferred reference; human adjudication remains a separate step.
+
+Consolidation matches session/turn identity and full input hash. It rebases `index`, `session_index`, `turn_number` and `previous_turn_index` to the expanded cohort while preserving categories, reasons and input hashes. Each row retains `source_result_index` and a pinned `source_reference` to the original record; original archived bytes remain unchanged.
 
 Coverage is calculated per pinned report by session/turn identity, full classifier-input hash (including predecessor context), model, effort, execution and taxonomy. Missing, invalid or changed-input results stay pending; incompatible configurations never fill one another's gaps. Each report retains its denominator and excluded targets. A later dataset or classifier execution creates new immutable artifacts; neither old results nor historical execution outcomes are rewritten.
 
@@ -183,7 +185,7 @@ Each call used the same eight-category rubric, one target per fresh ephemeral Co
 
 The 772 pending GPT-6 Luna low targets completed without retries. The original four remaining models produced 5,724 valid results in 5,746 process attempts: 20 authentication interruptions and two capacity failures were retried successfully; all 22 failed attempts lack usage. A narrowly scoped validator correction revalidated 474 completed HTTPS-recovered calls without new model calls, retaining original verdicts and logs. Astra and each Luna max configuration subsequently completed 1,431 targets in 1,431 attempts each. All available results passed recorded structural/compliance checks, with no model tool calls; these checks do not establish semantic accuracy.
 
-Current immutable evidence is indexed by the following bundles; full inputs, outputs, attempts, scripts, rate-card snapshot and pinned dependencies remain private under the configured data home:
+The September 26 immutable evidence is indexed by the following bundles; full inputs, outputs, attempts, scripts, rate-card snapshot and pinned dependencies remain private under the configured data home:
 
 | Evidence | Bundle ID |
 | --- | --- |

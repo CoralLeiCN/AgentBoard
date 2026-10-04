@@ -6,6 +6,8 @@ For turn-level experiments across multiple models, use the separate [dataset cur
 
 AgentBoard-generated sessions (`producer="agentboard"`) are retained for inspection and excluded from all classification paths, including `--force` and external submissions. Use the **AgentBoard-generated** producer filter to inspect them. See [producer identity, marking and backfill rules](data-lineage.md#321-session-producer).
 
+The [full turn-purpose encoder v1 plan](turn-classifier-plan.md) covers the Astra-labeled dataset, chronological session splits, ModernBERT truncation, Spark training/serving, evaluation and limitations. Base and Large comparisons are complete and both selected checkpoints are archived on Spark. See the [execution record](turn-classifier-run.md) for measured results, memory and evaluation limits. The session classifier below remains a separate capability.
+
 ## Categories
 
 The [2025 enterprise AI report, page 14](https://cdn.openai.com/pdf/7ef17d82-96bf-4dd1-9df2-228f7f377a29/the-state-of-enterprise-ai_2025-report.pdf#page=14) supplies six broad task types. AgentBoard adapts these into session labels and adds debugging and an unclear/other fallback. This is an application taxonomy, not OpenAI's original classifier or a reproduction of its study.

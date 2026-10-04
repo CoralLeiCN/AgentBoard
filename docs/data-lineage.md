@@ -4,7 +4,7 @@ Producer identity updated **2026-09-11**. Canonical storage schema: **v11** (per
 
 Input attribution, wait semantics, and their regression evidence updated **2026-09-07**.
 
-How AgentBoard obtains, transforms, stores, and presents data, including interpretation and information loss. This documents **current implementation**, not the upstream Codex format or universal release compatibility. New Codex archives record mapping version `codex-jsonl-v6`; earlier normalized rows have no persisted mapping version.
+How AgentBoard obtains, transforms, stores, and presents data, including interpretation and information loss. This documents **current implementation**, not the upstream Codex format or universal release compatibility. New Codex archives record mapping version `codex-jsonl-v7`; earlier normalized rows have no persisted mapping version.
 
 Related: [requirements](specification.md), [architecture](architecture.md), [current correctness gaps](data-quality-gaps.md), and [deferred capabilities](backlog.md).
 
@@ -91,15 +91,21 @@ That file also contained unmapped outer `world_state`/`token_usage_record` and i
 
 | Raw location / condition | Stored value / behavior |
 | --- | --- |
-| First usable `session_meta.payload.id`, otherwise `payload.session_id` | `Session.id`; a nonempty string is required. A different session ID later in the same file rejects the import. |
+| First usable `session_meta.payload.id`, otherwise `payload.session_id` | `Session.id`; a nonempty string is required. Different IDs reject the import except for the immediately following inherited parent header described below. |
 | `session_meta.timestamp` on the **outer envelope** | `Session.started_at`, normalized to UTC. The nested `payload.timestamp` is not used. |
 | Agent default | `Session.agent = "codex"`. |
-| Entire `session_meta.payload` | Copied into session metadata, including IDs, base instructions, git, `thread_source`, unknown fields, and nested structures. Store merging still uses `json_patch`; exact original values, including nulls, remain in the archive. |
+| Entire owning-session `session_meta.payload` | Copied into session metadata, including IDs, base instructions, git, `thread_source`, unknown fields, and nested structures. The inherited parent header remains raw evidence only. Store merging still uses `json_patch`; exact original values, including nulls, remain in the archive. |
 | `turn_context.payload.turn_id` | Becomes current turn ID; absent key leaves the previous value. |
 | Truthy `turn_context.payload.model` | Updates session metadata's `model`; subsequent updates replace it. No per-event model history is retained. |
 | First recognized prompt while title is `Untitled session` | Strip text, take first line, truncate to 100 characters; blank falls back to `Untitled session`. The title is an application choice. |
 
 Session metadata must precede other records. Repeated same-ID metadata rebuilds the parser’s Session object; section 8 defines store merging.
+
+**Inherited parent header — implemented 2026-10-04, `codex-jsonl-v7`.** Observed Codex `0.153.4` and `0.159.2` paginated subagent rollouts start with the child's metadata, then copied parent metadata. Accept the second header only as the next nonblank record, when the first header has `history_mode="paginated"`, a recognized `source="subagent"` or `source.subagent` object, and a nonempty `forked_from_id` matching both `parent_thread_id` and the resolved subagent parent. A supplied `source.subagent.thread_spawn.parent_thread_id` must agree. The copied header's selected ID must equal that parent. Unrelated, repeated parent, late, or invalid identity changes still reject the entire normalization transaction.
+
+For example, a first header with child ID `child`, parent/fork ID `parent`, and these markers may be followed by a `parent` header. Only `child` is created; its start time, metadata, producer and identity lineage continue to come from its own header. The parent header and every subsequent record remain in the exact raw archive. Subsequent history is normalized in the child's session view using existing mappings and input attribution; `subagent_history_start_ordinal` is retained without trimming history or deduplicating shared activity across sessions. Workspace overcounting remains [DQ-15](data-quality-gaps.md).
+
+[Synthetic regressions](../backend/tests/test_codex_inherited_metadata.py) cover identity/lineage preservation, internal inputs, exact raw export, repeated/growing imports, feature-disabled lineage, and atomic rejection of unproven identity changes. Existing successful imports are unchanged until explicitly reimported. Previously rejected files can be reimported or their retained captures reprocessed; prior failed attempts remain recorded. No database migration is required for this mapping change.
 
 ### 3.2.1 Session producer
 
@@ -203,7 +209,7 @@ Schema v9 preserves prior archives and adds empty capture tables for older data.
 
 Implemented **2026-09-06** in [adapter](../backend/agentboard/adapters/codex.py), [storage](../backend/agentboard/store.py), [API](../backend/agentboard/api.py), and [CLI](../backend/agentboard/cli.py). Accepted UTF-8 Codex JSONL imports retain every input line as UTF-8 bytes in `raw_lines`, keyed by archive ID and one-based physical `sequence`. This includes blank lines, original timestamp spelling, whitespace, line endings, absent final newline, unknown fields/types, system/developer messages, content parts, and encrypted content. The archive does not decrypt, execute, redact, or normalize these bytes. HTTP gzip input archives the decompressed JSONL, not its compressed transport envelope. Invalid imports roll back these line archives and normalized changes, while the independent original capture remains available.
 
-`raw_imports` records session ID, SHA-256 of concatenated source bytes, byte/line counts, archive creation time, and mapping version `codex-jsonl-v6`. Identical session/hash/mapping imports reuse an archive ID. Changed, appended, or shortened files create distinct archives and preserve prior versions. Latest means the most recently created distinct archive, not the longest file or most recent identical retry. Each distinct snapshot stores all its lines; storage grows with retained versions and has no automatic pruning.
+`raw_imports` records session ID, SHA-256 of concatenated source bytes, byte/line counts, archive creation time, and mapping version `codex-jsonl-v7`. Identical session/hash/mapping imports reuse an archive ID. Changed, appended, or shortened files create distinct archives and preserve prior versions. Latest means the most recently created distinct archive, not the longest file or most recent identical retry. Each distinct snapshot stores all its lines; storage grows with retained versions and has no automatic pruning.
 
 `GET /api/v1/sessions/{sid}/raw-imports` lists archive metadata. `/raw?import_id=ID` exports one exact version; omitting the ID selects the latest. The UI's **Export raw trace** uses that default. CLI equivalents are `agentboard export SESSION_ID --raw [--import-id ID]`. Existing `/export` and input exports remain normalized. Import responses include `raw_import_ids`. No available source returns an empty version list and a 404 raw export, never reconstructed evidence.
 
