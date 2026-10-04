@@ -18,6 +18,117 @@ The [Base vs Large report](../../docs/turn-classifier-comparison.md) owns the te
 | [train_modernbert.py](train_modernbert.py) | Smoke/save/reload, bounded five-run comparison and validation selection. Optional attention, fused AdamW, checkpointing, physical batch/token budgets and memory caps preserve effective batch 16. Repeated test reports carry `--evaluation-policy reused-holdout-comparison`. |
 | [serve_turn_encoder.py](serve_turn_encoder.py) | Load a hash-pinned selection on Spark, restoring the saved attention backend and shared preprocessing. No Codex harness. |
 
+## Jev through TypeSafe AI
+
+**Direct provider selected and implemented 2026-10-04; live interoperability and classification quality unverified.** [run_jev.py](run_jev.py) uses TypeSafe AI's official [HTTP API](https://docs.typesafe.ai/api): `POST https://api.typesafe.ai/v1/systemone`, authenticated with `TYPESAFE_API_KEY`. It pins `jev-1.13.0`, the [stable version documented on 2026-10-04](https://docs.typesafe.ai/models), rather than a moving alias. The standalone, standard-library runner sends one `choice` question per target with the existing eight category IDs/descriptions. Its separately versioned prompt (`jev-turn-purpose-v1`) is unchanged. Jev returns a category, probabilities and confidence without a prose reason; results do not enter the application's session-classification endpoint, which requires a reason.
+
+**Route migration:** Direct runs use `jev-turn-run-v2` and a **new output directory**. Vercel credentials/options are no longer accepted, including `--allow-provider-retention`. Old Gateway runs cannot be resumed by the direct runner; retain their artifacts and archived runner source unchanged. The provider switch itself sends no data.
+
+Export a pinned `inputs/turns.json` using the [archive reader](../../docs/experiment-storage.md#filesystem-commands-and-producer-api) and retain its reference alongside the run. Use ignored `.agentboard/` storage. Commands run from the repository root and require no ML packages or provider SDK:
+
+```sh
+# Local preview: validates all inputs and saves the first ten targets without a request/key.
+uv run python cronjob/classifier/run_jev.py \
+  --turns .agentboard/jev/turns.json --output .agentboard/jev/direct-first-10 --limit 10
+
+# Set TYPESAFE_API_KEY in your shell from the TypeSafe console.
+# Execute exactly the previewed selection, or resume it after an interruption.
+uv run python cronjob/classifier/run_jev.py \
+  --turns .agentboard/jev/turns.json --output .agentboard/jev/direct-first-10 --limit 10 \
+  --resume --execute
+
+# Preview all turns in a NEW run; add --resume --execute afterward to submit them.
+uv run python cronjob/classifier/run_jev.py \
+  --turns .agentboard/jev/turns.json --output .agentboard/jev/direct-all-turns
+
+# Preview a selected cohort while retaining predecessors from the complete source.
+# The selection file is a JSON array of source turn index integers.
+uv run python cronjob/classifier/run_jev.py \
+  --turns .agentboard/jev/turns.json --target-indices .agentboard/jev/latest-484-indices.json \
+  --output .agentboard/jev/direct-latest-484
+```
+
+`--execute` sends selected target and predecessor text directly to TypeSafe. The key is read only from `TYPESAFE_API_KEY`, never saved in arguments or artifacts; `AI_GATEWAY_API_KEY` is ignored. Create the key in the [TypeSafe console](https://console.typesafe.ai/); do not paste it into chat. TypeSafe account credit is separate from Vercel credit. The runner does not verify account balance or enforce a dollar budget. `--limit` bounds targets, not tokens or spend. Consult [current direct pricing](https://docs.typesafe.ai/models) before scaling up.
+
+If the key is in an ignored local `.env`, use `uv run --env-file .env python ...` to load it; the Python runner does not automatically read dotenv files. Keep that file private and separate from experiment artifacts. Review the [privacy reference](#privacy-retention-and-training) and [observed access failures](#observed-access-failures) before execution.
+
+**Direct preview prepared 2026-10-04:** The latest 484 targets are saved under `.agentboard/jev/direct-latest-484`, with complete predecessor context, zero requests and all labels pending. `TYPESAFE_API_KEY` was absent at setup. After configuring it in `.env`, the command for that prepared selection is:
+
+```sh
+uv run --env-file .env python cronjob/classifier/run_jev.py \
+  --turns .agentboard/jev/turns.json --target-indices .agentboard/jev/latest-484-indices.json \
+  --output .agentboard/jev/direct-latest-484 --resume --execute
+```
+
+### Privacy, retention and training
+
+**Sources checked 2026-10-04; published policies, not an independent audit.** The current route sends requests directly to TypeSafe. Recheck its policies and account agreement before future runs. Vercel's historical guarantees below do not apply to direct traffic.
+
+| Data or control | Direct TypeSafe policy and practical limit |
+| --- | --- |
+| Training | TypeSafe states Jev is not trained on customer requests/responses. The runner relies on that provider policy; the documented direct API has no equivalent to Gateway's `disallowPromptTraining` switch. [Models and data handling](https://docs.typesafe.ai/models#data-handling), [API contract](https://docs.typesafe.ai/api). |
+| Retention and ZDR | The DPA sets retention by purpose and legal necessity, with no fixed day count. TypeSafe offers ZDR through enterprise arrangements; the runner cannot verify this account's agreement or deletion behavior. No request flag claims ZDR. [DPA, Schedule I §8](https://typesafe.ai/legal/data-processing), [enterprise ZDR](https://docs.typesafe.ai/legal). |
+| Telemetry and other processing | MCA §4.1 excludes model-weight training on customer data without prior consent, but grants perpetual processing rights for telemetry, fraud/abuse monitoring and legal compliance. Section 4.3 permits telemetry use for product improvement. No-training does not exclude all analytics or secondary processing; no fixed telemetry expiry is established here. [Master customer agreement](https://typesafe.ai/legal/mca). |
+| Processing location | The public policy describes US hosting and transfer of UK/EEA personal data to the US. This runner does not enforce regional routing. [Privacy policy](https://typesafe.ai/legal/privacy-policy). |
+| Local evidence | Complete source bytes, rendered inputs and raw attempts stay in ignored `.agentboard/` storage; selected archives use the configured data home outside checkouts. They persist until deliberately managed; there is no automatic archive expiry or garbage collection. Preserve originals and dependencies under the [experiment storage policy](../../docs/experiment-storage.md#shared-deployment-privacy-and-recovery). |
+
+**Implemented controls:** The endpoint is fixed to TypeSafe HTTPS, with no Gateway fallback, inherited proxies, redirects or automatic retries. The key stays separate from saved request bodies. `run.json` pins provider, endpoint, model and protocol, and explicitly records training as provider-policy based and retention as an unverified account agreement. These are provenance statements, not privacy settings sent to the API. The provider change preserves full inputs, local evidence, failure handling and exact-configuration resume checks. No direct Jev response has yet been observed here.
+
+**Data boundary:** Each request contains full selected target and immediate-predecessor role/content text plus the classification rubric. Excluding identity metadata does not sanitize names, secrets or private code inside that text. Preserve complete local originals; do not commit or paste transcripts, credentials or raw attempts into documentation/issues. The [recorded authorization](../../docs/specification.md#152-jev-turn-classification-runner) covers the selected experiment and privacy settings, not unrelated data, providers or credit purchases.
+
+### Observed access failures
+
+**Historical Vercel route, observed 2026-10-04; both stopped on their first request with no labels.** These were separate Gateway account constraints. They do not establish direct TypeSafe access or provider deletion behavior.
+
+| Authorized selection | Result |
+| --- | --- |
+| Initial ten-turn trial, default ZDR | HTTP 403: the Hobby account cannot use the Pro/Enterprise ZDR control. Preserve the original failed attempt separately. |
+| Latest 484 targets with predecessor context; explicitly approved standard retention and no-training control | HTTP 403: this account's free Gateway credits do not permit Jev; the error requires paid credits. Routing metadata reports zero provider attempts. The other 483 requests were not dispatched; all 484 labels remain pending. Usage/cost were absent, so cost is unknown. |
+
+The failed batch and original Gateway runner are archived locally. All 484 classifications are still pending; prepare a new direct run with the same full source and target index file. Do not modify the old run's endpoint/model or reuse its output directory.
+
+### Historical Gateway privacy reference
+
+**Superseded route; sources checked 2026-10-04.** Retained for interpreting the failed Gateway attempts. These policies and switches do not describe the current direct API.
+
+| Gateway layer | Published policy and historical control |
+| --- | --- |
+| Content and provider ZDR | Vercel says Gateway deletes prompt/output content after completion. Provider ZDR filtering requires Pro/Enterprise; per-request filtering has no additional fee. Vercel lists TypeSafe as no-training/ZDR compliant under its agreements, with prompt/output retention limited to generation/contractual needs except legal obligations. [Gateway ZDR](https://vercel.com/docs/ai-gateway/security-and-compliance/zdr). |
+| Training | Gateway does not train on prompts/responses. Its free, all-plan `disallowPromptTraining: true` filter restricts providers under Vercel agreements. It does not establish a deletion deadline. [No-training policy](https://vercel.com/docs/ai-gateway/security-and-compliance/disallow-prompt-training). |
+| BYOK exception | Gateway's no-training filter does not apply to provider BYOK credentials; ZDR normally skips them unless marked compliant. The old runner did not verify downstream credential source. [BYOK and training](https://vercel.com/docs/ai-gateway/security-and-compliance/disallow-prompt-training), [BYOK and ZDR](https://vercel.com/docs/ai-gateway/security-and-compliance/zdr#byok). |
+| Metadata | Gateway logs include timing, model/provider, authentication scope, status, usage and cost. Routing details last 30 days; older request records remain without those details. This is not a deletion deadline for all metadata. [Request logs](https://vercel.com/docs/ai-gateway/observability-and-spend/logs#retention-and-limits). |
+
+The archived runner restricted routing to TypeSafe, defaulted to `zeroDataRetention: true`, and later added `disallowPromptTraining: true`. The approved 484-target attempt explicitly omitted ZDR using the former `--allow-provider-retention` switch. Exact settings remain in each historical run; no failure automatically changed them.
+
+### Jev artifacts and verification
+
+| Input or artifact | Behavior |
+| --- | --- |
+| Turns JSON array / JSONL | Same [input contract](#inputs-and-label-provenance) as the encoder workflow. Validate the complete source before selecting targets. By default use source-file order; optional `--target-indices` selects in listed order, then `--limit` takes the first N. Reject duplicate, unknown and noninteger indices. Empty targets stay eligible; a predecessor outside that subset is still included. |
+| API `state` | Full compact `{"target":[...],"previous":[...]}` role/content JSON, identical to `turn_inputs`. Other metadata is excluded from the request. No client truncation; a provider context-limit rejection is a failed attempt. Server-side tokenization/truncation is unverified. |
+| `source-turns`, `inputs.jsonl`, `question.json`, `run.json` | Complete original source bytes (including unknown fields), selected rendered inputs, exact question and configuration/source/selection hashes. The historical input hash is retained as asserted provenance; the rendered-text hash is computed independently. |
+| Optional `target-indices.json` | Exact selection-file bytes and their SHA-256 in `run.json`. Resume checks the original and saved selection; full source turns remain available for predecessor lookup. |
+| `attempts/*.request.json`, `*.response.json` | Every request body is saved before dispatch; raw decoded response body, HTTP status and elapsed wall seconds are saved afterward. Transport failures retain their exception type. An interrupted request without a response has unknown outcome/usage and may be charged again when explicitly resumed. |
+| `predictions.jsonl` | Successful rows with session/turn identity, both hashes, configuration, category, eight probabilities, reported usage/provider cost metadata and elapsed seconds. Require the pinned returned model identity, valid category, finite probabilities summing to one, the selected category matching their maximum, and finite confidence in [0, 1]. Preserve `response_model`, confidence and native `input_tokens`/`output_tokens` usage without inventing cost. No invented rationale, usage or cost. |
+| `summary.json` | Requested, available, pending and attempt counts; preview/execute mode and input size. Pending turns remain in the denominator. These derived files can be regenerated by running with `--resume` without `--execute`. |
+
+The runner makes serial calls with a 60-second timeout (`--timeout`), no automatic retries, redirects, environment proxies or fallback models. Requests go directly to TypeSafe under the account agreement described above. Any HTTP, transport or invalid-answer failure stops further calls and returns a nonzero exit status. Resume requires identical source bytes, target selection, timeout, prompt and provider configuration; it revalidates saved responses and skips successes. Use a new output directory when any of these change. A process lock prevents two runners from using the same output directory. Output files remain local; no live collector, database, checkpoint or existing label is modified.
+
+Predictions use the existing comparison format. To compare against an already prepared, hash-verified supervised dataset's test split:
+
+```sh
+uv run --project cronjob/classifier --locked classifier compare \
+  --dataset .agentboard/classifier-run/dataset \
+  --prediction jev=.agentboard/jev/direct-all-turns/predictions.jsonl \
+  --output .agentboard/jev/comparison.json
+```
+
+That command evaluates only the dataset's test targets; it reports missing coverage and source/text mismatches. GPT labels measure reference agreement, not human accuracy. Jev's complete text differs from the encoder's 8,192-token truncation, and returned probabilities are not locally calibrated. Preserve raw usage/cost metadata when comparing costs; failed/interrupted requests can have unknown usage. Archive selected completed or partial runs with `classifier record` and pinned source references as described below; the recorder includes this runner's code.
+
+[Synthetic regressions](tests/test_jev.py) cover preview/no-network behavior, predecessor selection, source preservation, HTTP request shape, strict response validation, provider-specific credentials, rejection of old Gateway runs/options, confidence, interruption, resume and failures. They make no live provider calls. Repository live integration tests retain the [private-harness policy](../../docs/testing.md#private-model-tests); the separately authorized hosted attempt above is dataset experiment execution.
+
+**Direct-route verification, 2026-10-04:** 43 focused Jev regressions and 120 full classifier tests passed. Five optional checks skipped in the independent environment; the archive adapter then passed separately with AgentBoard available. Backend: 639 passed, six live tests deselected; frontend: 54 passed. Lint, formatting, CLI help, documentation links and whitespace checks passed. Optional ML/Spark checks and live TypeSafe execution were not run; this establishes the offline adapter, not provider access or privacy enforcement.
+
 ## Inputs and label provenance
 
 Use the existing archive's `inputs/turns.json` array, or JSONL with the same fields. Export a pinned artifact with `agentboard experiments read ID inputs/turns.json`; save its reference JSON alongside the experiment. Resolve references through the [archive reader](../../docs/experiment-storage.md#filesystem-commands-and-producer-api), rather than treating a moving navigation pointer as an immutable input.

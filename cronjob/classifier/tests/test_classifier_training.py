@@ -368,6 +368,7 @@ def test_record_complete_evidence_and_restore(tmp_path):
     assert (bundle / "source/classifier/cli.py").is_file()
     assert (bundle / "source/train_bert.py").is_file()
     assert (bundle / "source/train_lightgbm.py").is_file()
+    assert (bundle / "source/run_jev.py").is_file()
     assert not (bundle / "source/backend").exists()
     assert not (bundle / "source/frontend").exists()
     result = subprocess.run(

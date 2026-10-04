@@ -97,7 +97,7 @@ def record_workspace(args: argparse.Namespace) -> JsonObject:
     )
     for entry in entries:
         run.add_file(args.directory / entry["path"], "workspace/" + entry["path"], role="experiment-evidence")
-    for path in sorted(root.glob("train_*.py")):
+    for path in sorted([*root.glob("train_*.py"), root / "run_jev.py"]):
         run.add_file(path, "source/" + path.name, role="code")
     for folder in (root / "classifier", root / "tests"):
         for path in sorted(folder.rglob("*.py")):
