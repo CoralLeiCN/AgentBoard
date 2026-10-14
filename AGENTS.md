@@ -16,6 +16,10 @@ When testing the app UI, use Codex’s internal in-app browser (`iab`). Do not u
 
 All live Codex/model tests must use **`http://192.168.1.220:30000/v1`** through the guide’s isolated private harness. An unavailable endpoint is a failure; never fall back to another provider or the user's logged-in Codex configuration.
 
+**PII exception, requested 2026-10-04:** the dataset privacy work uses normal Codex configuration, selected model and saved authentication, including its synthetic preflight and the requested 100-sample experiment. This is an explicit user-selected execution mode, not an automatic endpoint fallback. Other live tests retain the private-endpoint requirement. Keep PII experiment artifacts private and preserve the raw source.
+
+**PII defaults, requested 2026-10-11:** future privacy-worker runs default to `gpt-6.1-sol` with `high` reasoning effort while retaining normal provider configuration and saved authentication. Explicit per-run overrides are supported; see the [portable technology decision](docs/experiment-datasets/technology.md#selected-components).
+
 # GitHub workflows
 
 For GitHub authentication and pull-request workflows, use the user's system default browser, not Codex's internal in-app browser. The internal-browser requirement above applies only to AgentBoard UI testing.

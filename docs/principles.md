@@ -10,6 +10,10 @@ Always collect and preserve complete raw data from configured sources so future 
 
 Feature switches and performance optimizations must never reduce raw completeness. Preserve captured evidence across interpretation failures and make capture failures explicit. Lossless storage optimizations are compatible with this principle; silently sampling, truncating, or dropping source data is not.
 
+## Support separate research derivatives
+
+**Intent added 2026-10-04.** Preserved turn data can feed a separate preparation layer for privacy-reviewed research datasets. Keep raw evidence intact and treat label review, sanitization and publication readiness as separate concerns. The portable [experiment dataset documentation](experiment-datasets/README.md) owns this work's requirements and design; the [AgentBoard integration boundary](specification.md#18-experiment-dataset-preparation-and-privacy) stays in this repository.
+
 ## Keep the core dependable and analysis optional
 
 The dashboard, core browsing, shared storage, complete raw capture, configuration, and service lifecycle form a dependable core. Analysis, evidence inspection, export, and continuation capabilities can be enabled independently according to their dependencies.

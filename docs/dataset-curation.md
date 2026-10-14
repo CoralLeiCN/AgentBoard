@@ -2,6 +2,8 @@
 
 **Implemented 2026-09-26.** This module curates archived turn-classifier results without rerunning classifiers or changing historical evidence. Duplicate suggestions use embedding cosine similarity, with configurable local or remote models. [Specification §17](specification.md#17-dataset-curation) owns acceptance criteria.
 
+**Boundary clarified 2026-10-04:** these exports preserve full content, audit history and source references; they do not remove PII or sensitive data. The separate [experiment dataset preparation layer](experiment-datasets/README.md) has an initial Codex-only private draft builder; reviewed research derivatives and possible public benchmarks remain its target. Curation decisions may inform it, but verified labels and duplicate review do not certify privacy or publication readiness.
+
 ## Label review
 
 Create a review workspace from pinned dataset/results artifacts, using the existing coverage formats (`turn-comparison-v1` and `independent-turn-v1`). Join by original session ID, turn ID and full classifier-input SHA-256, including predecessor context. Reject duplicate configurations/targets and incompatible schemas. Missing, changed-input and invalid results remain explicit coverage gaps; they do not vote.

@@ -1,4 +1,4 @@
-"""Check formatting in the adopted curation and classifier scopes; use --fix to apply it."""
+"""Check formatting in adopted Python scopes and the frontend; use --fix to apply it."""
 
 import argparse
 import shutil
@@ -19,6 +19,8 @@ PYTHON_PATHS = (
     "examples/dataset_curation.py",
     "scripts/check_style.py",
     "cronjob/classifier",
+    "dataset_privacy",
+    "backend/tests/test_dataset_privacy_endpoint_e2e.py",
 )
 
 

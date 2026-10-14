@@ -1,0 +1,1 @@
+For this batch return {results: [...]} with exactly one result per supplied chunk. Inspect every chunk, including short messages. Quotes and occurrence selectors refer only to that individual chunk's text. Do not omit clean chunks: include their empty findings list.

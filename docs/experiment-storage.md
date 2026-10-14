@@ -4,6 +4,8 @@
 
 The [dataset curation module](dataset-curation.md) consumes pinned results for label review and input-only duplicate suggestions. Mutable review workspaces live in `sync/curation/`; each export is a new immutable dataset bundle. Historical classifier runs and raw evidence remain unchanged.
 
+**Dataset preparation, 2026-10-04:** a separate [privacy preparation layer](experiment-datasets/README.md) includes an initial Codex-only worker that writes private review drafts. Final review/sealing and public packaging remain unimplemented. Private build evidence can be recorded with this archive; the worker does not automatically register bundles. A future public package must contain only reviewed sanitized artifacts, without recursively publishing raw source dependencies. Archive verification and private MLflow sharing do not establish public-release readiness.
+
 ## Boundaries
 
 Experiment inputs, attempts, results, analysis code and reports live in immutable bundles under the machine data home. The completed one-time migration copied selected historical evidence there without changing originals. Consumers resolve pinned manifest/artifact hashes, so worktree removal cannot invalidate an archived dependency. Git documentation describes formats and workflows; it is not a second experiment catalog.
@@ -201,6 +203,8 @@ The completed experiments verified identities, full input/schema hashes, origina
 **Deferred direction:** move dataset version storage to Hugging Face while keeping experiment results in this archive. Initially, datasets use `experiments/datasets/`. Keep logical dataset identity, immutable content/version references, subset selection, and hashes separate from their storage location, so a later adapter can resolve the same evidence elsewhere.
 
 The future adapter must pin a dataset repository and immutable revision, plus manifest/artifact hashes; a local pathname or moving branch name is insufficient. Preserve verified local evidence needed for offline report regeneration. This is a dataset-storage extension, not a third experiment publication mode or a required dependency for filesystem recording. Repository/access policy, revision mapping, and migration verification belong to [WL-004](backlog.md#wl-004--hugging-face-dataset-version-storage). No Hugging Face adapter or dataset upload is part of the initial implementation.
+
+Storage migration preserves the bytes of a selected version. Creating a sanitized version is a separate [preparation operation](experiment-datasets/design.md#artifacts-and-row-contract); it must not silently replace raw evidence during transfer. Public benchmark distribution requires its own package and release decision, regardless of storage provider.
 
 ## Portable evidence contract
 

@@ -27,8 +27,11 @@ For all project documentation:
 | [Architecture](architecture.md) | Current components, design decisions, dated measurements and performance limits |
 | [Experiment storage](experiment-storage.md) | Archive format/workflow, selected coverage and accepted publication design |
 | [Dataset curation](dataset-curation.md) | Label/duplicate review, embedding configuration, persistence and verification limits |
+| [Experiment dataset documentation](experiment-datasets/README.md) | Portable requirements, preparation/privacy design, technology decision and roadmap; AgentBoard-specific integration evidence stays in specification §18 |
 | [Data lineage](data-lineage.md) | Exact mappings and metric semantics |
 | [Data-quality gaps](data-quality-gaps.md) | Current correctness concerns, evidence, and verification cases |
 | [Backlog](backlog.md) | Deferred capabilities and future wishes |
 
 Keep each detailed rule in one primary document; cross-link elsewhere. Record high-level intent in the principles, translate it into acceptance criteria in the specification, and keep implementation steps and current gaps in their respective documents.
+
+The experiment dataset directory owns its detailed requirements, design, technology decision and roadmap so it can move independently. Keep its internal links and required definitions self-contained. AgentBoard documents record only the source/integration boundary and link to that set; avoid maintaining a second copy of its requirements or decisions.
