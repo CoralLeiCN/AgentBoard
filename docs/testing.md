@@ -29,6 +29,7 @@ Use `-k` to select a test by name while iterating. Choose additional coverage ac
 | Model or native continuation integration | Mock/dummy/fake-protocol regressions, plus relevant [private model tests](#private-model-tests) when real execution is needed. Native execution needs an extension to that isolated harness. |
 | Codex CLI upgrade or app-server integration | [Schema compatibility checks](#schema-and-performance-checks), plus affected integration regressions. |
 | Independent classifier experiments | The separate [project and test workflow](../cronjob/classifier/README.md#verification-and-limits) lives under `cronjob/classifier/`. Run its tests and lint separately; these are not backend tests or AgentBoard dependencies. |
+| Codex dataset privacy worker | [Portable synthetic process tests](../dataset_privacy/tests/test_privacy.py) are included in the root pytest suite. The [live privacy test](../backend/tests/test_dataset_privacy_endpoint_e2e.py) uses the shared private endpoint fixture and synthetic text; no real dataset is required. |
 | Experiment archives | [Synthetic recorder/coverage tests](../backend/tests/test_experiments.py) and `uv run python examples/experiment_storage.py`; verify copied bytes, pinned dependencies, interrupted evidence and deterministic offline analysis. No model or tracking service is needed. |
 | Documentation only | Verify changed links, examples and claims against their source, and run `git diff --check`; application suites are unnecessary unless behavior also changes. |
 
@@ -39,7 +40,7 @@ After code changes, run the complete offline backend and frontend suites, Python
 ```sh
 uv run --extra dev pytest -m "not e2e" -q
 node --test frontend/tests/*.test.cjs
-uv run --extra dev ruff check backend examples scripts
+uv run --extra dev ruff check backend examples scripts dataset_privacy
 uv run --extra dev python scripts/check_style.py
 git diff --check
 ```
@@ -49,7 +50,7 @@ git diff --check
 | Backend pytest | Unit and integration coverage for imports, storage, API/CLI behavior, telemetry, timing, usage, lineage, model failures and native protocol. The [shared fixtures](../backend/tests/conftest.py) use a temporary database and dummy model for API tests. Stored app-server schema integrity is also verified offline. |
 | Frontend Node tests | JavaScript rendering and interaction logic, including simulated DOM and HTTP responses. They do not launch a browser or verify visual layout. The wildcard runs all test files. |
 | Ruff | Python lint and import checks; it does not establish runtime correctness. |
-| Style check | Ruff formatting for the curation/embedding modules, their tests and demo, and the independent classifier project; Prettier for the curation frontend. The exact adopted scope lives in [check_style.py](../scripts/check_style.py) and [package.json](../package.json). Other existing files are not yet formatter-enforced. Use `uv run --extra dev python scripts/check_style.py --fix` to format this scope. |
+| Style check | Ruff formatting for the curation/embedding modules, their tests and demo, the independent classifier project, and the dataset privacy worker/live test; Prettier for the curation frontend. The exact adopted scope lives in [check_style.py](../scripts/check_style.py) and [package.json](../package.json). Other existing files are not yet formatter-enforced. Use `uv run --extra dev python scripts/check_style.py --fix` to format this scope. |
 | Git diff check | Whitespace errors in tracked changes; review new files as well. |
 
 `-m "not e2e"` explicitly deselects live tests. Plain `pytest -q` normally skips them, but exporting an `AGENTBOARD_E2E_CODEX_*`, `AGENTBOARD_E2E_CLASSIFICATION_*` or `AGENTBOARD_E2E_EMBEDDING_*` base URL, model or key also opts the corresponding suite into live execution. Prefer explicit selection for predictable offline runs.
@@ -80,21 +81,25 @@ Python changes under `backend/agentboard/` reload automatically. Refresh the bro
 
 ## Private model tests
 
-Every test that invokes Codex or another model must use **`http://192.168.1.220:30000/v1`**. Run live checks explicitly when validating model integration; they are not required for every routine change:
+The default policy for tests invoking Codex or another model requires **`http://192.168.1.220:30000/v1`**, with the explicit PII exception below. Run live checks explicitly when validating model integration; they are not required for every routine change:
+
+**Explicit PII exception, 2026-10-04:** the user selected normal Codex configuration/model/login for dataset privacy execution, its synthetic preflight and the fixed 100-sample experiment. The worker's offline tests cover both modes; the existing private-endpoint pytest fixture remains private-only. This scoped exception is recorded in [specification §18](specification.md#18-experiment-dataset-preparation-and-privacy). Preserve PII experiment evidence privately and report the actual execution mode; never treat a default-mode run as a passing private-endpoint test.
+
+The PII worker's model/reasoning defaults were explicitly selected on 2026-10-11; see its [technology decision](experiment-datasets/technology.md#selected-components). Offline CLI/process regressions verify defaults and overrides, recorded settings, normal login reuse and preservation of shared configuration. They do not verify live model availability or detection quality.
 
 ```sh
 uv run --extra dev pytest --run-private-e2e -m e2e -q
 ```
 
-This runs the [Codex telemetry test](../backend/tests/test_codex_endpoint_e2e.py), [synthetic classification tests](../backend/tests/test_classification_endpoint_e2e.py) and the [synthetic embedding test](../backend/tests/test_embedding_endpoint_e2e.py). The Codex test requires `codex` on `PATH`. Mark new live tests `pytest.mark.e2e`, use the [private_endpoint fixture](../backend/tests/conftest.py), and use synthetic prompts instead of shared real sessions.
+This runs the [Codex telemetry test](../backend/tests/test_codex_endpoint_e2e.py), [synthetic classification tests](../backend/tests/test_classification_endpoint_e2e.py), [synthetic embedding test](../backend/tests/test_embedding_endpoint_e2e.py) and [Codex privacy test](../backend/tests/test_dataset_privacy_endpoint_e2e.py). Codex tests require `codex` on `PATH`; the privacy worker also requires its documented CLI version. Mark new live tests `pytest.mark.e2e`, use the [private_endpoint fixture](../backend/tests/conftest.py), and use synthetic prompts instead of shared real sessions.
 
 The [shared endpoint policy](../scripts/private_endpoint.py) rejects any different base URL before a model request or Codex process. Discovery requests only the private `/models`, disables proxies/redirects, and selects automatically only when exactly one model is advertised. Pin a model with `AGENTBOARD_E2E_CODEX_MODEL`, `AGENTBOARD_E2E_CLASSIFICATION_MODEL` or `AGENTBOARD_E2E_EMBEDDING_MODEL` when needed. The matching `*_API_KEY` is optional; credentials stay out of process arguments. [example.env](../example.env) lists the settings. As noted above, exporting a suite's endpoint/model/key settings also opts it into live testing unless `e2e` is deselected.
 
 The endpoint must support streaming Responses for Codex, structured Responses for classification, and `/embeddings` for embedding tests. To run only embeddings, use `uv run --extra dev pytest --run-private-e2e -m e2e backend/tests/test_embedding_endpoint_e2e.py -q`. A service without an embedding model is a test failure, not a reason to substitute another endpoint. The Codex test requests one short synthetic response, disables retries, and checks the final message plus ingested `otlp_log`, `otlp_trace` and normalized `llm` events. Its temporary Codex home ignores user configuration, OAuth state and execution-policy rules; tools inherit no environment and execution is read-only without approvals. The receiver/database are temporary and separate from ports 4318/4319 and shared real sessions.
 
-The tests clear inherited proxy and hosted OpenAI environment settings. The Codex child inherits only runtime essentials and the optional private-provider key, excluding desktop app pipes/session IDs. It pins `RUST_LOG=info` for consistent log filtering; parent configuration is unchanged. Child stdout/stderr diagnostics stay in the temporary test directory.
+The tests clear inherited proxy and hosted OpenAI environment settings. Codex children inherit only runtime essentials and the optional private-provider key, excluding desktop app pipes/session IDs. The telemetry test pins `RUST_LOG=info` for consistent log filtering; the privacy worker disables telemetry and uses `RUST_LOG=warn`. Parent configuration is unchanged. Child stdout/stderr diagnostics stay in the temporary test directory. The privacy test verifies a synthetic email finding and draft transformation; passing it would establish basic interoperability, not general PII-removal quality.
 
-If the private service is unreachable, incompatible or ambiguous, report a failure and fix the configuration. Never substitute OpenAI, ChatGPT login, another provider or a paid model. Do not use `agentboard resume --execute` with normal user Codex configuration as a test; extend the isolated private harness if native resume needs live coverage. The dev dashboard stays in dummy mode. [Offline policy tests](../backend/tests/test_private_endpoint.py) verify rejection and discovery behavior, not service availability. Simple live classification cases do not establish general classification accuracy.
+For private-endpoint tests, an unreachable, incompatible or ambiguous service is a failure. Never substitute OpenAI, ChatGPT login, another provider or a paid model for those tests. Do not use `agentboard resume --execute` with normal user Codex configuration as a test; extend the isolated private harness if native resume needs live coverage. The dev dashboard stays in dummy mode. [Offline policy tests](../backend/tests/test_private_endpoint.py) verify rejection and discovery behavior, not service availability. Simple live classification cases do not establish general classification accuracy.
 
 ## Schema and performance checks
 

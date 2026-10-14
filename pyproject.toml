@@ -47,7 +47,7 @@ packages = ["backend/agentboard"]
 "frontend/curation.css" = "agentboard/static/curation.css"
 
 [tool.pytest.ini_options]
-testpaths = ["backend/tests"]
+testpaths = ["backend/tests", "dataset_privacy/tests"]
 pythonpath = ["."]
 markers = ["e2e: opt-in tests that use an operator-provided external service"]
 

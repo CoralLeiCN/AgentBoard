@@ -1,6 +1,6 @@
 # AgentBoard backlog and wishlist
 
-Updated: 2026-09-26
+Updated: 2026-10-04
 
 Future capabilities for review, not initial-release acceptance criteria or delivery commitments. Current requirements live in the [specification](specification.md); current correctness concerns in the [gap register](data-quality-gaps.md).
 
@@ -66,6 +66,8 @@ Move dataset version storage to Hugging Face in a future phase while retaining e
 
 Before implementation, define repository ownership/access, immutable revision mapping, subset/schema compatibility, and a scoped sharing policy for selected evidence. Verify source bytes and dependency resolution across migration, retain local evidence required for offline reports, and preserve existing result/input hashes. Do not use a moving branch as a reproducibility reference or silently redact raw sources during transfer. Test the adapter and restoration with synthetic artifacts before selected real data.
 
+The [dataset preparation layer](experiment-datasets/README.md) targets new reviewed sanitized versions separately from storage migration; its initial worker produces private drafts. Possible public benchmark publication is a later release decision; this storage option does not authorize uploading raw archives or curated exports.
+
 ## Third-party extensions
 
 Deferred until a concrete external integration cannot reasonably ship with AgentBoard. Any proposal must cover package identity/versioning, permissions, installation/removal, recovery, observability and support. The default design direction is supervised separate-process execution with a small versioned RPC contract, cancellation and health checks; no implementation is selected. Core would retain database, migrations, auth, lifecycle and UI ownership. Compare worker layouts and coarse operations using performance and threat requirements before adding isolation overhead.
@@ -79,6 +81,7 @@ The filesystem recorder, one-time migration and curation module are implemented.
 | Private MLflow service, publisher/fetcher and operational backup/restore | Accepted, not implemented. [EXP-08–10 and EXP-12](specification.md#15-durable-experiment-storage) require complete dependency transfer, separate publication state, retry/conflict handling, access policy and verified restoration. |
 | Supervised turn-purpose baselines against GPT | Independent [classifier workflow](../cronjob/classifier/README.md) implemented under [CLS-01–08](specification.md#16-supervised-classifier-comparison). Reference-label selection/adjudication and real-data training/comparison remain pending experiment execution; no accuracy result is implied. |
 | Human adjudication of disagreements and suggested duplicates | Review module implemented under [CUR-01–05 and DEDUP-01–05](specification.md#17-dataset-curation); labels become verified and turns become removed only through explicit attributed decisions. |
+| Experiment dataset privacy review and release | The [custom Codex worker](../dataset_privacy/README.md) prepares private drafts and has synthetic process coverage. A normal-Codex synthetic preflight passes; model-quality adjudication, human review persistence, sealing/splits and publication remain pending in the dedicated [roadmap](experiment-datasets/roadmap.md). AgentBoard's source evidence stays in [§18](specification.md#18-experiment-dataset-preparation-and-privacy). |
 | Live remote embedding integration verification | Adapter implemented and covered with mock HTTP. The required private endpoint refused connection on 2026-09-26; rerun the isolated synthetic test when it supports embeddings. [Verification limits](dataset-curation.md#verification-and-limits). |
 | Large-scale similarity indexing and automatic review transfer | Deferred. Current cosine comparison uses matrix blocks, and changed inputs require a new workspace without automatic verification transfer. |
 
@@ -103,3 +106,4 @@ Human/context/internal-input correctness remains tracked in [specification §7](
 | 2026-09-26 | The selected report now contains complete results for five independent classifiers. Keep historical subset results unchanged; human verification remains separate from model coverage. |
 | 2026-09-26 | Extend independent coverage with Astra extra-high and both Luna max configurations, keeping low/max distinct. Use Astra as the starting reference instead of Sol, retain seven comparisons across eight configurations and show recorded input cache plus dated API cost estimates. Preserve earlier results and batched archives; human review remains pending. |
 | 2026-09-26 | Implement curation with mixed inferred/verified labels, full-turn duplicate review, reversible removal and configurable local/remote embedding cosine. Retire lexical similarity and earlier workspace compatibility. |
+| 2026-10-04 | Record the dataset preparation work in [dedicated portable documents](experiment-datasets/README.md), including its requirements and decision log. Keep AgentBoard's source/integration evidence here; raw preservation and local-only policies continue to apply. |
