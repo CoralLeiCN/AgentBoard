@@ -7,20 +7,32 @@ from pathlib import Path
 from .artifacts import manifest_hash, read_json, sha256, verify
 from .taxonomy import CATEGORIES, TAXONOMY_VERSION
 from .turn_encoder import MAX_TOKENS, PREPROCESSING, tokenize
+from .ultrabert import MODELS as ULTRABERT_MODELS
+from .ultrabert import verify_source as verify_ultrabert_source
 
 
-def load_model(path: Path, device: str, *, fresh: bool = False, attention: str = "sdpa"):
-    from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer
-
+def load_model(
+    path: Path, device: str, *, fresh: bool = False, attention: str = "sdpa", base_model: dict | None = None
+):
     if attention not in ("sdpa", "flash_attention_2"):
         raise ValueError("Unsupported encoder attention backend")
     if fresh:
-        for entry in read_json(path / "source.json")["files"]:
+        base_model = read_json(path / "source.json")
+    ultrabert = base_model is not None and base_model.get("model_id") in ULTRABERT_MODELS
+    if ultrabert:
+        verify_ultrabert_source(path, base_model, code_only=not fresh)
+    elif fresh:
+        for entry in base_model["files"]:
             if sha256(path / entry["path"]) != entry["sha256"]:
                 raise ValueError("Base model file checksum mismatch")
-    tokenizer = AutoTokenizer.from_pretrained(path, local_files_only=True, trust_remote_code=False)
-    config = AutoConfig.from_pretrained(path, local_files_only=True, trust_remote_code=False)
-    if config.model_type != "modernbert" or config.max_position_embeddings != MAX_TOKENS:
+    from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(path, local_files_only=True, trust_remote_code=ultrabert)
+    config = AutoConfig.from_pretrained(path, local_files_only=True, trust_remote_code=ultrabert)
+    if ultrabert:
+        if config.model_type != "ultrabert" or config.max_position_embeddings < MAX_TOKENS:
+            raise ValueError("Expected UltraBERT supporting the matched 8192-token limit")
+    elif config.model_type != "modernbert" or config.max_position_embeddings != MAX_TOKENS:
         raise ValueError("Expected ModernBERT with 8192 positions")
     if fresh:
         config.num_labels = len(CATEGORIES)
@@ -34,7 +46,7 @@ def load_model(path: Path, device: str, *, fresh: bool = False, attention: str =
         path,
         config=config,
         local_files_only=True,
-        trust_remote_code=False,
+        trust_remote_code=ultrabert,
         use_safetensors=True,
         attn_implementation=attention,
     ).to(device)
@@ -79,7 +91,7 @@ class Encoder:
         if importlib.metadata.version("transformers") != meta["environment"]["transformers"]:
             raise ValueError("Transformers version differs from training")
         self.model, self.tokenizer = load_model(
-            path / "model", device, attention=meta.get("attention", "sdpa")
+            path / "model", device, attention=meta.get("attention", "sdpa"), base_model=meta["base_model"]
         )
         self.model.eval()
         self.device = device

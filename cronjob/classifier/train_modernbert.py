@@ -30,6 +30,7 @@ from classifier.encoder_runtime import Encoder, load_model, probabilities, tenso
 from classifier.evaluation import metrics
 from classifier.taxonomy import CATEGORIES, TAXONOMY_VERSION
 from classifier.turn_encoder import PREPROCESSING
+from classifier.ultrabert import MODELS as ULTRABERT_MODELS
 
 
 @dataclass
@@ -44,6 +45,12 @@ class Config:
     patience: int = 2
     warmup_ratio: float = 0.1
     weight_decay: float = 0.01
+    adam_beta1: float = 0.9
+    adam_beta2: float = 0.999
+    adam_epsilon: float = 1e-8
+    learning_rates: tuple[float, ...] = (2e-5, 1e-5, 5e-5)
+    initial_seed: int = 42
+    repeat_seeds: tuple[int, ...] = (43, 44)
     device: str = "cuda"
     attention: str = "sdpa"
     gradient_checkpointing: bool = True
@@ -99,6 +106,19 @@ def train_step(model: Any, tokenizer: Any, block: list[dict], optimizer: Any, co
     return TrainingStep(total_loss, norm.item(), peak_memory, physical_batches)
 
 
+def build_optimizer(model: Any, config: Config, lr: float):
+    import torch
+
+    return torch.optim.AdamW(
+        model.parameters(),
+        lr=lr,
+        betas=(config.adam_beta1, config.adam_beta2),
+        eps=config.adam_epsilon,
+        weight_decay=config.weight_decay,
+        **({"fused": True} if config.fused_optimizer else {}),
+    )
+
+
 def train_one(config: Config, lr: float, seed: int, *, smoke: bool = False):
     import torch
     from transformers import get_linear_schedule_with_warmup, set_seed
@@ -121,12 +141,7 @@ def train_one(config: Config, lr: float, seed: int, *, smoke: bool = False):
     if config.gradient_checkpointing:
         model.gradient_checkpointing_enable()
     torch.cuda.reset_peak_memory_stats()
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=lr,
-        weight_decay=config.weight_decay,
-        **({"fused": True} if config.fused_optimizer else {}),
-    )
+    optimizer = build_optimizer(model, config, lr)
     epochs = 1 if smoke else config.epochs
     steps_per_epoch = math.ceil(len(training) / config.effective_batch)
     total_steps = steps_per_epoch * epochs
@@ -193,7 +208,10 @@ def train_one(config: Config, lr: float, seed: int, *, smoke: bool = False):
     torch.cuda.empty_cache()
     # The smoke run checks actual saved-weight reload and matching predictions.
     if smoke:
-        reloaded, saved_tokenizer = load_model(output / "model", config.device, attention=config.attention)
+        reloaded, saved_tokenizer = load_model(
+            output / "model", config.device, attention=config.attention,
+            base_model=read_json(config.model / "source.json"),
+        )
         restored = probabilities(reloaded, saved_tokenizer, validation, config.device, config.microbatch)
         difference = max(
             abs(a - b)
@@ -348,19 +366,28 @@ def report(config: Config, selected: Path):
     return result
 
 
+def archive_name(model_id: str) -> str:
+    if model_id == "answerdotai/ModernBERT-base":
+        return "modernbert-turn-v1"
+    return model_id.split("/")[-1].lower() + "-turn-v1"
+
+
+def archive_entrypoint(model_id: str) -> str:
+    return "train_ultrabert.py" if model_id in ULTRABERT_MODELS else "train_modernbert.py"
+
+
 def archive_run(config: Config, outcome: str):
     from agentboard.experiments.archive import Archive
 
     archive = Archive(str(config.archive_home))
+    model_id = read_json(config.model / "source.json")["model_id"]
     recorder = archive.begin(
         "agentboard",
-        "modernbert-large-turn-v1"
-        if read_json(config.model / "source.json")["model_id"].endswith("-large")
-        else "modernbert-turn-v1",
+        archive_name(model_id),
         metadata={
             "configuration": config_dict(config),
             "environment": environment(),
-            "code": {"snapshot": "code/", "entrypoint": "train_modernbert.py"},
+            "code": {"snapshot": "code/", "entrypoint": archive_entrypoint(model_id)},
             "source_provenance": read_json(config.dataset / "sources/sources.json"),
         },
     )
@@ -394,6 +421,20 @@ def validate_config(config: Config) -> None:
         raise ValueError("The physical token budget must retain complete 8192-token inputs")
     if config.evaluation_policy not in ("original-holdout", "reused-holdout-comparison"):
         raise ValueError("Unsupported evaluation policy")
+    if not config.learning_rates or any(
+        isinstance(lr, bool) or not isinstance(lr, (int, float)) or not math.isfinite(lr) or lr <= 0
+        for lr in config.learning_rates
+    ) or len(set(config.learning_rates)) != len(config.learning_rates):
+        raise ValueError("Learning rates must be distinct positive finite numbers")
+    seeds = (config.initial_seed, *config.repeat_seeds)
+    if any(type(seed) is not int or not 0 <= seed < 2**32 for seed in seeds) or len(set(seeds)) != len(seeds):
+        raise ValueError("Seeds must be distinct unsigned 32-bit integers")
+    values = (config.adam_beta1, config.adam_beta2, config.adam_epsilon, config.weight_decay, config.warmup_ratio)
+    if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in values):
+        raise ValueError("Optimizer settings must be finite numbers")
+    if not (0 <= config.adam_beta1 < 1 and 0 <= config.adam_beta2 < 1 and config.adam_epsilon > 0
+            and config.weight_decay >= 0 and 0 <= config.warmup_ratio <= 1):
+        raise ValueError("Invalid AdamW or warmup setting")
     validate_memory_limits(config.memory_limit_bytes, config.cuda_memory_limit_bytes)
 
 
@@ -408,18 +449,18 @@ def run(config: Config, mode: str) -> None:
     write_json(config.output / "configuration.json", config_dict(config))
     outcome = "failed"
     try:
-        smoke = train_one(config, 2e-5, 42, smoke=True)
+        smoke = train_one(config, config.learning_rates[0], config.initial_seed, smoke=True)
         write_json(config.output / "smoke-result.json", smoke)
         if mode == "smoke":
             outcome = "succeeded"
             progress(config.output / "progress.json", phase="smoke-complete")
             return
         candidates = []
-        for lr in (2e-5, 1e-5, 5e-5):
-            meta = train_one(config, lr, 42)
-            candidates.append((meta["validation_macro_f1"], -meta["validation_loss"], lr, 42))
+        for lr in config.learning_rates:
+            meta = train_one(config, lr, config.initial_seed)
+            candidates.append((meta["validation_macro_f1"], -meta["validation_loss"], lr, config.initial_seed))
         best_lr = max(candidates)[2]
-        for seed in (43, 44):
+        for seed in config.repeat_seeds:
             meta = train_one(config, best_lr, seed)
             candidates.append((meta["validation_macro_f1"], -meta["validation_loss"], best_lr, seed))
         best = max(candidates)

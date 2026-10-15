@@ -651,6 +651,12 @@ The dedicated `cronjob/classifier/` project owns all experiment code, tests and 
 
 The separately versioned [ModernBERT Spark workflow](turn-classifier-run.md) extends this project. Its approved Astra supervision and chronological whole-session split supersede the default human-label preference and coverage-adaptive split for that experiment only. It uses explicit preparation/training/service scripts and a dedicated encoder test harness, without Codex. Its public-weight download is a separate explicit command; training and serving load local pinned files.
 
+### UltraBERT frozen-cohort comparison
+
+**Implemented 2026-10-15.** Extend the turn-purpose encoder workflow to `dmis-lab/UltraBERT-150M` and `dmis-lab/UltraBERT-380M` using the existing frozen ModernBERT splits, reference labels, input contract and validation criterion. Preserve the original optimization settings and all completed runs. The requested 380M optimizer round changes AdamW β2/ε, weight decay and warmup to the pinned DMIS recommendations, keeps peak LR at 1e-5 for smoke and seeds 42/43/44, and performs no new LR search. Select by validation before test evaluation; identify reused holdouts and model-label agreement explicitly.
+
+The [UltraBERT workflow and results](ultrabert-turn-classifier.md) own commands, exact settings, source revisions and measurement limits. This is an explicit extension to CLS-04's local model-loading policy: UltraBERT may execute checksum-verified downloaded local implementation code for its two allowlisted revisions; downloads remain a separate command and inference/training load local files only. ModernBERT and the older BERT/LightGBM paths retain their current defaults. Keep complete private evidence separate from public aggregate reports and synthetic tests. Reusable source is generalized from preserved execution snapshots; publishing it does not claim a fresh training run or reliable optimizer improvement.
+
 ## 17. Dataset curation
 
 **Implemented 2026-09-26.** Review turn-level classifier disagreements and suggest duplicates from target user input only. The [curation design](dataset-curation.md) defines transformations, persistence and interfaces for `dataset-curation-v2`. Offline and browser checks cover both provider paths; live remote embedding interoperability remains unverified because the required private endpoint was unavailable.

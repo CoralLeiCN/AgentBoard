@@ -129,6 +129,12 @@ That command evaluates only the dataset's test targets; it reports missing cover
 
 **Direct-route verification, 2026-10-04:** 43 focused Jev regressions and 120 full classifier tests passed. Five optional checks skipped in the independent environment; the archive adapter then passed separately with AgentBoard available. Backend: 639 passed, six live tests deselected; frontend: 54 passed. Lint, formatting, CLI help, documentation links and whitespace checks passed. Optional ML/Spark checks and live TypeSafe execution were not run; this establishes the offline adapter, not provider access or privacy enforcement.
 
+## UltraBERT on the frozen cohort
+
+**Implemented 2026-10-15.** [The UltraBERT report](../../docs/ultrabert-turn-classifier.md) records the 150M/380M comparisons, original settings and the 380M fixed-LR optimizer round. [download_ultrabert.py](download_ultrabert.py) downloads an allowlisted public revision; [prepare_ultrabert.py](prepare_ultrabert.py) retokenizes an existing sealed cohort without changing labels or splits. [train_ultrabert.py](train_ultrabert.py) owns `UltraBertConfig`, selects a named optimizer recipe and trains at one fixed LR (default 1e-5) across seeds 42/43/44, including smoke at that same LR. Applied values and selection are saved before test evaluation.
+
+Use the separate `ultrabert` extra or [Dockerfile.ultrabert](Dockerfile.ultrabert), which requires Transformers 5.16.1; the existing `encoder`/`ml` environments retain Transformers 4. Download first, then disable container networking. UltraBERT executes checksum-verified local code only for the two pinned revisions; ModernBERT still disables custom code. Source data, private manifests, predictions and weights stay out of Git. The report provides commands and aggregate results.
+
 ## Inputs and label provenance
 
 Use the existing archive's `inputs/turns.json` array, or JSONL with the same fields. Export a pinned artifact with `agentboard experiments read ID inputs/turns.json`; save its reference JSON alongside the experiment. Resolve references through the [archive reader](../../docs/experiment-storage.md#filesystem-commands-and-producer-api), rather than treating a moving navigation pointer as an immutable input.
