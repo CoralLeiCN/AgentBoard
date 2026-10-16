@@ -5,7 +5,7 @@ import io
 import sys
 from dataclasses import replace
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import pytest
 from ultrabert_helpers import model_source
@@ -116,9 +116,10 @@ def test_loader_keeps_modernbert_local_and_enables_only_pinned_ultrabert(tmp_pat
     calls = []
     config = SimpleNamespace(
         model_type="ultrabert" if ultra else "modernbert",
-        max_position_embeddings=32768 if ultra else 8192,
         id2label=dict(enumerate(CATEGORIES)),
     )
+    if not ultra:
+        config.max_position_embeddings = 8192
     tokenizer = SimpleNamespace()
     model = SimpleNamespace(to=lambda device: "loaded")
 
@@ -175,6 +176,64 @@ def test_archive_names_preserve_existing_models_and_identify_ultrabert():
     assert archive_name("dmis-lab/UltraBERT-380M") == "ultrabert-380m-turn-v1"
     assert archive_entrypoint("answerdotai/ModernBERT-base") == "train_modernbert.py"
     assert archive_entrypoint("dmis-lab/UltraBERT-380M") == "train_ultrabert.py"
+
+
+@pytest.mark.parametrize(
+    "model_id,dockerfile",
+    [
+        ("answerdotai/ModernBERT-base", "Dockerfile.spark"),
+        ("answerdotai/ModernBERT-large", "Dockerfile.spark"),
+        ("dmis-lab/UltraBERT-150M", "Dockerfile.ultrabert"),
+        ("dmis-lab/UltraBERT-380M", "Dockerfile.ultrabert"),
+    ],
+)
+def test_archive_retains_the_models_reproduction_environment(tmp_path, monkeypatch, model_id, dockerfile):
+    import train_modernbert as trainer
+
+    config = Config(tmp_path / "dataset", tmp_path / "model", tmp_path / "output", tmp_path / "archive")
+    for path in (config.dataset / "sources", config.model, config.output):
+        path.mkdir(parents=True)
+    write_json(config.dataset / "sources/sources.json", {"synthetic": True})
+    write_json(config.model / "source.json", {"model_id": model_id})
+    write_json(config.output / "configuration.json", {"synthetic": True})
+    code = tmp_path / "code"
+    code.mkdir()
+    for name in ("train_modernbert.py", "train_ultrabert.py", "pyproject.toml", "uv.lock"):
+        (code / name).write_text("synthetic source")
+    for name, version in (("Dockerfile.spark", "4.57.6"), ("Dockerfile.ultrabert", "5.16.1")):
+        (code / name).write_text(f"RUN pip install transformers=={version}\n")
+    monkeypatch.setattr(trainer, "__file__", str(code / "train_modernbert.py"))
+    files, metadata = {}, {}
+
+    class Recorder:
+        id = "synthetic-archive"
+
+        def add_file(self, source, destination):
+            files[destination] = source.read_bytes()
+
+        def finalize(self, *, outcome):
+            assert outcome == "succeeded"
+
+    class Archive:
+        def __init__(self, home):
+            assert home == str(config.archive_home)
+
+        def begin(self, project, experiment, **kwargs):
+            assert project == "agentboard" and experiment == archive_name(model_id)
+            metadata.update(kwargs["metadata"])
+            return Recorder()
+
+    for name in ("agentboard", "agentboard.experiments", "agentboard.experiments.archive"):
+        module = ModuleType(name)
+        module.__path__ = []
+        monkeypatch.setitem(sys.modules, name, module)
+    sys.modules["agentboard.experiments.archive"].Archive = Archive
+    trainer.archive_run(config, "succeeded")
+    assert files[f"code/{dockerfile}"] == (code / dockerfile).read_bytes()
+    assert {p for p in files if "Dockerfile" in p} == {f"code/{dockerfile}"}
+    assert files["code/pyproject.toml"] == (code / "pyproject.toml").read_bytes()
+    assert files["code/uv.lock"] == (code / "uv.lock").read_bytes()
+    assert f"code/{metadata['code']['entrypoint']}" in files
 
 
 @pytest.mark.parametrize("model_id", list(MODELS))

@@ -30,8 +30,10 @@ def load_model(
     tokenizer = AutoTokenizer.from_pretrained(path, local_files_only=True, trust_remote_code=ultrabert)
     config = AutoConfig.from_pretrained(path, local_files_only=True, trust_remote_code=ultrabert)
     if ultrabert:
-        if config.model_type != "ultrabert" or config.max_position_embeddings < MAX_TOKENS:
-            raise ValueError("Expected UltraBERT supporting the matched 8192-token limit")
+        # The pinned RoPE configs have no max_position_embeddings field.
+        # Our shared tokenizer/input contract enforces the 8192-token limit.
+        if config.model_type != "ultrabert":
+            raise ValueError("Expected the pinned UltraBERT model type")
     elif config.model_type != "modernbert" or config.max_position_embeddings != MAX_TOKENS:
         raise ValueError("Expected ModernBERT with 8192 positions")
     if fresh:

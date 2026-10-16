@@ -209,7 +209,9 @@ def train_one(config: Config, lr: float, seed: int, *, smoke: bool = False):
     # The smoke run checks actual saved-weight reload and matching predictions.
     if smoke:
         reloaded, saved_tokenizer = load_model(
-            output / "model", config.device, attention=config.attention,
+            output / "model",
+            config.device,
+            attention=config.attention,
             base_model=read_json(config.model / "source.json"),
         )
         restored = probabilities(reloaded, saved_tokenizer, validation, config.device, config.microbatch)
@@ -399,7 +401,8 @@ def archive_run(config: Config, outcome: str):
     for path in sorted(code.rglob("*.py")):
         if "__pycache__" not in path.parts and ".venv" not in path.parts:
             recorder.add_file(path, f"code/{path.relative_to(code).as_posix()}")
-    for name in ("Dockerfile.spark", "pyproject.toml", "uv.lock"):
+    dockerfile = "Dockerfile.ultrabert" if model_id in ULTRABERT_MODELS else "Dockerfile.spark"
+    for name in (dockerfile, "pyproject.toml", "uv.lock"):
         recorder.add_file(code / name, f"code/{name}")
     recorder.finalize(outcome=outcome)
     print({"archive_id": recorder.id, "outcome": outcome}, flush=True)
@@ -421,19 +424,34 @@ def validate_config(config: Config) -> None:
         raise ValueError("The physical token budget must retain complete 8192-token inputs")
     if config.evaluation_policy not in ("original-holdout", "reused-holdout-comparison"):
         raise ValueError("Unsupported evaluation policy")
-    if not config.learning_rates or any(
-        isinstance(lr, bool) or not isinstance(lr, (int, float)) or not math.isfinite(lr) or lr <= 0
-        for lr in config.learning_rates
-    ) or len(set(config.learning_rates)) != len(config.learning_rates):
+    if (
+        not config.learning_rates
+        or any(
+            isinstance(lr, bool) or not isinstance(lr, (int, float)) or not math.isfinite(lr) or lr <= 0
+            for lr in config.learning_rates
+        )
+        or len(set(config.learning_rates)) != len(config.learning_rates)
+    ):
         raise ValueError("Learning rates must be distinct positive finite numbers")
     seeds = (config.initial_seed, *config.repeat_seeds)
     if any(type(seed) is not int or not 0 <= seed < 2**32 for seed in seeds) or len(set(seeds)) != len(seeds):
         raise ValueError("Seeds must be distinct unsigned 32-bit integers")
-    values = (config.adam_beta1, config.adam_beta2, config.adam_epsilon, config.weight_decay, config.warmup_ratio)
+    values = (
+        config.adam_beta1,
+        config.adam_beta2,
+        config.adam_epsilon,
+        config.weight_decay,
+        config.warmup_ratio,
+    )
     if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in values):
         raise ValueError("Optimizer settings must be finite numbers")
-    if not (0 <= config.adam_beta1 < 1 and 0 <= config.adam_beta2 < 1 and config.adam_epsilon > 0
-            and config.weight_decay >= 0 and 0 <= config.warmup_ratio <= 1):
+    if not (
+        0 <= config.adam_beta1 < 1
+        and 0 <= config.adam_beta2 < 1
+        and config.adam_epsilon > 0
+        and config.weight_decay >= 0
+        and 0 <= config.warmup_ratio <= 1
+    ):
         raise ValueError("Invalid AdamW or warmup setting")
     validate_memory_limits(config.memory_limit_bytes, config.cuda_memory_limit_bytes)
 
@@ -458,7 +476,9 @@ def run(config: Config, mode: str) -> None:
         candidates = []
         for lr in config.learning_rates:
             meta = train_one(config, lr, config.initial_seed)
-            candidates.append((meta["validation_macro_f1"], -meta["validation_loss"], lr, config.initial_seed))
+            candidates.append(
+                (meta["validation_macro_f1"], -meta["validation_loss"], lr, config.initial_seed)
+            )
         best_lr = max(candidates)[2]
         for seed in config.repeat_seeds:
             meta = train_one(config, best_lr, seed)

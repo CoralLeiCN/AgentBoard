@@ -8,7 +8,7 @@ This is agreement with saved independent Astra xhigh labels, not human-verified 
 
 All models use 1,011 training, 173 validation and 247 test turns in chronological whole-session/fork groups. Related groups stay together; this does not guarantee disjoint timestamp windows. Inputs put the target turn before its immediate predecessor, use the same markers, and right-truncate at 8,192 tokens. All eight categories contribute to macro-F1, including zero-F1 categories. Creative-media has four training examples and one in each holdout.
 
-UltraBERT uses a different tokenizer from ModernBERT. Membership, labels and full serialized text match; retained token IDs differ between tokenizer families. The two UltraBERT sizes have identical tokenizer files and retained tokens. Seven UltraBERT training inputs truncate; none in validation or test do. Three empty training targets remain included.
+UltraBERT uses a different tokenizer from ModernBERT. Membership, labels and full serialized text match; retained token IDs differ between tokenizer families. UltraBERT's single-sequence layout has a BOS prefix; ModernBERT uses CLS/SEP boundaries. The two UltraBERT sizes have identical tokenizer files and retained tokens. Seven UltraBERT training inputs truncate; none in validation or test do. Three empty training targets remain included.
 
 The initial runs preserve the ModernBERT optimization recipe: effective batch 16, unweighted cross-entropy, AdamW, linear schedule, clipping at 1.0, five-epoch maximum and patience two. Learning rates 2e-5, 1e-5 and 5e-5 use seed 42; the winning rate repeats with seeds 43 and 44. Highest validation macro-F1 selects the checkpoint, with lower validation cross-entropy breaking ties. Selection and its checksum are saved before test evaluation.
 
@@ -91,7 +91,11 @@ The committed scripts generalize the preserved experiment snapshots; the histori
 
 UltraBERT requires Transformers 5 and executes its downloaded Python implementation locally. The loader enables that only for the two allowlisted revisions after checking source/code hashes; ModernBERT continues to disable custom code. Training and serving load local files only. Run containers with networking disabled after the separate public download.
 
-For Spark, build [Dockerfile.ultrabert](../cronjob/classifier/Dockerfile.ultrabert); it retains NVIDIA's ARM64 PyTorch/FlashAttention build and installs Transformers 5.16.1. The separate `ultrabert` extra is for its own environment and conflicts with the existing `encoder`/`ml` extras, which retain Transformers 4.
+The pinned UltraBERT RoPE configurations do not declare ModernBERT's `max_position_embeddings` field. The loader checks their model type and source pins; shared preprocessing enforces the 8,192-token limit.
+
+For Spark, build [Dockerfile.ultrabert](../cronjob/classifier/Dockerfile.ultrabert); it retains NVIDIA's ARM64 PyTorch/FlashAttention build and installs Transformers 5.16.1. It pins Click 8.3.1 to satisfy NVIDIA's bundled `spin` dependency. The separate `ultrabert` extra is for its own environment and conflicts with the existing `encoder`/`ml` extras, which retain Transformers 4.
+
+When `--archive-home` is supplied, new UltraBERT archives retain that Dockerfile with the source snapshot, dependency lock and recorded configuration. ModernBERT archives retain `Dockerfile.spark`. Existing experiment archives remain unchanged.
 
 ```sh
 # Run in the isolated Spark image with /code set to cronjob/classifier.
@@ -116,10 +120,11 @@ The PR's portable source is checked separately with synthetic tests for source p
 
 PR-source verification, 16 October 2026:
 
-- `uv run --extra dev pytest -m 'not e2e' -q`: 706 passed, seven live tests deselected.
+- `uv run --no-sync pytest -m 'not e2e' -q` after locked development setup: 706 passed, seven live tests deselected.
 - `node --test frontend/tests/*.test.cjs`: 54 passed.
-- `uv run --extra dev pytest -c cronjob/classifier/pyproject.toml cronjob/classifier/tests -q -rs`: 151 passed, five skipped locally (four need optional PyTorch; one needs an explicit Spark smoke checkpoint).
-- The same classifier suite in the offline Spark image, `python -m pytest tests -q -rs -p no:cacheprovider`: 153 passed, three skipped (optional AgentBoard archive integration, the older Sentence Transformer/LightGBM round trip, and the explicit-checkpoint service check). Actual optimizer tensor updates and accumulation passed there.
-- Ruff for `backend examples scripts cronjob/classifier`, the classifier lockfile's offline consistency check, `git diff --check`, and custom report-link/aggregate-arithmetic/figure-metadata checks passed.
+- `uv run --no-sync pytest -c cronjob/classifier/pyproject.toml cronjob/classifier/tests -q -rs`: 155 passed, five skipped locally (four need optional PyTorch; one needs an explicit Spark smoke checkpoint).
+- Built the PR's actual Dockerfile on Spark; `python -m pip check` passed with no broken requirements. In that image, the classifier suite with networking disabled and `TURN_ENCODER_SMOKE_MODEL` pointing to the preserved 380M smoke checkpoint, `python -m pytest tests -q -rs -p no:cacheprovider`: 158 passed, two skipped (optional AgentBoard archive integration and the older Sentence Transformer/LightGBM round trip). Real checkpoint loading, exact tokenizer boundaries, offline/service prediction parity, optimizer tensor updates and accumulation passed. Source hashes matched the reviewed files.
+- Regression checks cover source archives retaining the correct Dockerfile for both ModernBERT and both UltraBERT sizes, plus loading UltraBERT configurations without a position-limit field. Both cases reproduced failures before their fixes. No historical training artifact or quality score changed.
+- Ruff for `backend examples scripts dataset_privacy cronjob/classifier`, the full adopted Ruff/Prettier style check, the classifier lockfile's offline consistency check, `git diff --check`, and custom report-link/aggregate-arithmetic/figure-metadata checks passed.
 
 Application UI and provider-endpoint tests were not run: this change adds no application UI or provider integration, and PR verification makes no provider requests. Historical full training is not repeated by these source checks.
