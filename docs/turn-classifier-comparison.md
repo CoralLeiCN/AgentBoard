@@ -97,6 +97,7 @@ The chosen Large epoch 5 follows the predeclared macro-F1 criterion. Epoch 4 has
 | Recorded measurement | Base | Large |
 | --- | --- | --- |
 | Recorded training time, all five runs | 54.46 min | 33.95 min |
+| Recorded training time, selected run | 11.37 min | 6.77 min |
 | Completed epochs, all runs | 24 | 25 |
 | Peak CUDA allocation, full runs | 6.15 GB | 32.08 GB |
 | Peak reserved CUDA + process RSS | Not recorded | 48.65 GB |
@@ -107,6 +108,8 @@ The chosen Large epoch 5 follows the predeclared macro-F1 criterion. Epoch 4 has
 Large's faster training came with changed execution settings: FlashAttention 2, fused AdamW, no gradient checkpointing, and physical batches up to 16 / 32,768 padded tokens. Base used SDPA, checkpointing and microbatch 2. Effective batch stayed 16. This is not an isolated benchmark of model size, nor an architecture-only quality ablation.
 
 Recorded training time includes epoch training, validation and checkpoint writes; it excludes initial loading, smoke, final evaluation and archiving. Inference uses batch 1 / concurrency 1 on each model's configured backend, excluding HTTP overhead. The unified-memory RSS sum is conservative and may double-count allocations; Base's missing RSS measurement is not zero.
+
+The selected-run duration covers all epochs completed by that candidate. The [combined ModernBERT/UltraBERT timing record](ultrabert-turn-classifier.md#recorded-training-time), reviewed 16 October 2026, retains per-run seconds and totals for all 23 full runs, including the separate recommended-optimizer round.
 
 The selected Large speed configuration was 3.68x faster than conservative Large training in a six-update benchmark (1.45 versus 5.32 seconds/update). Full-length stress reached a conservative 59.20 GB; real training peaked at 48.65 GB. Docker memory was capped at 80 GB and the CUDA allocator at 60 GB. Two larger profile candidates hit the allocator cap and were rejected; all full training runs completed.
 

@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from classifier.turn_encoder import MAX_TOKENS, tokenize
+from classifier.turn_encoder import MAX_TOKENS, serialize, tokenize
+from classifier.ultrabert import MODELS as ULTRABERT_MODELS
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("TURN_ENCODER_SMOKE_MODEL"), reason="Explicit Spark smoke checkpoint required"
@@ -22,8 +23,20 @@ def test_real_tokenizer_checkpoint_and_service_parity():
     large = [{"role": "user", "content": " token" * 10000}]
     retained = tokenize(encoder.tokenizer, large, [])
     assert retained["truncated"] and len(retained["input_ids"]) == MAX_TOKENS
-    assert retained["input_ids"][0] == encoder.tokenizer.cls_token_id
-    assert retained["input_ids"][-1] == encoder.tokenizer.sep_token_id
+    content = encoder.tokenizer(
+        serialize(large, []), add_special_tokens=False, truncation=False, padding=False
+    )["input_ids"]
+    if encoder.metadata["base_model"]["model_id"] in ULTRABERT_MODELS:
+        assert encoder.tokenizer.bos_token_id is not None
+        expected = [encoder.tokenizer.bos_token_id, *content[: MAX_TOKENS - 1]]
+    else:
+        assert encoder.tokenizer.cls_token_id is not None and encoder.tokenizer.sep_token_id is not None
+        expected = [
+            encoder.tokenizer.cls_token_id,
+            *content[: MAX_TOKENS - 2],
+            encoder.tokenizer.sep_token_id,
+        ]
+    assert retained["input_ids"] == expected
     items = [
         {
             "request_id": "synthetic-code",

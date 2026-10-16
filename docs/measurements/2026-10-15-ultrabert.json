@@ -1,0 +1,459 @@
+{
+  "measured_date": "2026-10-15",
+  "scope": "Aggregate reference agreement and recorded training durations; no session contents, identities, private manifests or model weights",
+  "cohort": {
+    "train": 1011,
+    "validation": 173,
+    "test": 247,
+    "grouping": "frozen chronological whole-session/fork groups",
+    "reference": "saved independent Astra xhigh labels",
+    "test_policy": "previously inspected holdout; retrospective comparison",
+    "classes": 8,
+    "input": "target turn then immediate predecessor; right truncation at 8192 tokens",
+    "ultrabert_training_inputs_truncated": 7,
+    "validation_and_test_inputs_truncated": 0,
+    "creative_media_support": {
+      "train": 4,
+      "validation": 1,
+      "test": 1
+    }
+  },
+  "pretrained_revisions": {
+    "dmis-lab/UltraBERT-150M": "f821af159246ab4ac84669d42533281366bc55ab",
+    "dmis-lab/UltraBERT-380M": "7789071ca161cb99e03ec1006655d24ad8c1b0e1"
+  },
+  "optimizer_settings": {
+    "baseline_optimizer": {
+      "adam_beta1": 0.9,
+      "adam_beta2": 0.999,
+      "adam_epsilon": 1e-08,
+      "lr": 1e-05,
+      "scheduler": "linear",
+      "warmup_ratio": 0.1,
+      "weight_decay": 0.01
+    },
+    "recommended_optimizer": {
+      "adam_beta1": 0.9,
+      "adam_beta2": 0.98,
+      "adam_epsilon": 1e-06,
+      "lr": 1e-05,
+      "scheduler": "linear",
+      "warmup_ratio": 0.05,
+      "weight_decay": 0.1
+    }
+  },
+  "models": {
+    "ultrabert_150m": {
+      "selected": {
+        "lr": 2e-05,
+        "seed": 44,
+        "epoch": 4
+      },
+      "validation_macro_f1": 0.6759559150274662,
+      "validation_agreement": 0.8034682080924855,
+      "test_macro_f1": 0.6110921579146663,
+      "test_agreement": 0.7327935222672065,
+      "runs": [
+        {
+          "lr": 1e-05,
+          "seed": 42,
+          "best_epoch": 5,
+          "validation_macro_f1": 0.5853476060712903,
+          "validation_loss": 0.9536292730225674,
+          "training_seconds": 741.6205546318088,
+          "epochs_completed": 5,
+          "validation_agreement": 0.7514450867052023
+        },
+        {
+          "lr": 2e-05,
+          "seed": 42,
+          "best_epoch": 4,
+          "validation_macro_f1": 0.6043876032875569,
+          "validation_loss": 1.3061723513757042,
+          "training_seconds": 733.4151188849937,
+          "epochs_completed": 5,
+          "validation_agreement": 0.7341040462427746
+        },
+        {
+          "lr": 2e-05,
+          "seed": 43,
+          "best_epoch": 2,
+          "validation_macro_f1": 0.5344333600458827,
+          "validation_loss": 0.92632257214519,
+          "training_seconds": 581.1676445868798,
+          "epochs_completed": 4,
+          "validation_agreement": 0.6936416184971098
+        },
+        {
+          "lr": 2e-05,
+          "seed": 44,
+          "best_epoch": 4,
+          "validation_macro_f1": 0.6759559150274662,
+          "validation_loss": 0.769284763102689,
+          "training_seconds": 723.0168699019123,
+          "epochs_completed": 5,
+          "validation_agreement": 0.8034682080924855
+        },
+        {
+          "lr": 5e-05,
+          "seed": 42,
+          "best_epoch": 5,
+          "validation_macro_f1": 0.5913548517630668,
+          "validation_loss": 1.2935660931324002,
+          "training_seconds": 728.9738115300424,
+          "epochs_completed": 5,
+          "validation_agreement": 0.7167630057803468
+        }
+      ],
+      "training_time": {
+        "run_count": 5,
+        "epochs_completed": 24,
+        "total_seconds": 3508.193999535637,
+        "selected_run_seconds": 723.0168699019123
+      }
+    },
+    "ultrabert_380m": {
+      "selected": {
+        "lr": 1e-05,
+        "seed": 42,
+        "epoch": 4
+      },
+      "validation_macro_f1": 0.6630754256151847,
+      "validation_agreement": 0.815028901734104,
+      "test_macro_f1": 0.636866523288325,
+      "test_agreement": 0.757085020242915,
+      "runs": [
+        {
+          "lr": 1e-05,
+          "seed": 42,
+          "best_epoch": 4,
+          "validation_macro_f1": 0.6630754256151847,
+          "validation_loss": 0.7026505351891668,
+          "training_seconds": 912.0550513779745,
+          "epochs_completed": 5,
+          "validation_agreement": 0.815028901734104
+        },
+        {
+          "lr": 1e-05,
+          "seed": 43,
+          "best_epoch": 5,
+          "validation_macro_f1": 0.658857143754722,
+          "validation_loss": 0.8499509943374445,
+          "training_seconds": 896.5103908679448,
+          "epochs_completed": 5,
+          "validation_agreement": 0.7861271676300579
+        },
+        {
+          "lr": 1e-05,
+          "seed": 44,
+          "best_epoch": 3,
+          "validation_macro_f1": 0.62638163335425,
+          "validation_loss": 0.6090339241016742,
+          "training_seconds": 892.469641050091,
+          "epochs_completed": 5,
+          "validation_agreement": 0.791907514450867
+        },
+        {
+          "lr": 2e-05,
+          "seed": 42,
+          "best_epoch": 5,
+          "validation_macro_f1": 0.6486672457385735,
+          "validation_loss": 1.0975485031448708,
+          "training_seconds": 906.3858448460232,
+          "epochs_completed": 5,
+          "validation_agreement": 0.7861271676300579
+        },
+        {
+          "lr": 5e-05,
+          "seed": 42,
+          "best_epoch": 5,
+          "validation_macro_f1": 0.6349662597742475,
+          "validation_loss": 1.1358318038199495,
+          "training_seconds": 897.8002978230361,
+          "epochs_completed": 5,
+          "validation_agreement": 0.7745664739884393
+        }
+      ],
+      "training_time": {
+        "run_count": 5,
+        "epochs_completed": 25,
+        "total_seconds": 4505.22122596507,
+        "selected_run_seconds": 912.0550513779745
+      }
+    },
+    "ultrabert_380m_recommended": {
+      "selected": {
+        "lr": 1e-05,
+        "seed": 42,
+        "epoch": 5
+      },
+      "validation_macro_f1": 0.6575041689973443,
+      "validation_agreement": 0.815028901734104,
+      "test_macro_f1": 0.6438669157600866,
+      "test_agreement": 0.7732793522267206,
+      "runs": [
+        {
+          "lr": 1e-05,
+          "seed": 42,
+          "best_epoch": 5,
+          "validation_macro_f1": 0.6575041689973443,
+          "validation_loss": 0.8062381768637034,
+          "training_seconds": 905.6168217330705,
+          "epochs_completed": 5,
+          "validation_agreement": 0.815028901734104
+        },
+        {
+          "lr": 1e-05,
+          "seed": 43,
+          "best_epoch": 5,
+          "validation_macro_f1": 0.6429580078286975,
+          "validation_loss": 0.8089568167217488,
+          "training_seconds": 914.6718652921263,
+          "epochs_completed": 5,
+          "validation_agreement": 0.7745664739884393
+        },
+        {
+          "lr": 1e-05,
+          "seed": 44,
+          "best_epoch": 5,
+          "validation_macro_f1": 0.6147329902304228,
+          "validation_loss": 0.9090167111960773,
+          "training_seconds": 895.7872404130176,
+          "epochs_completed": 5,
+          "validation_agreement": 0.7745664739884393
+        }
+      ],
+      "training_time": {
+        "run_count": 3,
+        "epochs_completed": 15,
+        "total_seconds": 2716.0759274382144,
+        "selected_run_seconds": 905.6168217330705
+      }
+    },
+    "modernbert_base": {
+      "validation_macro_f1": 0.5471879563330212,
+      "validation_agreement": 0.6820809248554913,
+      "test_macro_f1": 0.49782946775548165,
+      "test_agreement": 0.6153846153846154,
+      "selected": {
+        "lr": 5e-05,
+        "seed": 42,
+        "epoch": 5
+      },
+      "runs": [
+        {
+          "lr": 1e-05,
+          "seed": 42,
+          "best_epoch": 4,
+          "epochs_completed": 5,
+          "training_seconds": 681.1326743099999
+        },
+        {
+          "lr": 2e-05,
+          "seed": 42,
+          "best_epoch": 4,
+          "epochs_completed": 5,
+          "training_seconds": 682.3565457820005
+        },
+        {
+          "lr": 5e-05,
+          "seed": 42,
+          "best_epoch": 5,
+          "epochs_completed": 5,
+          "training_seconds": 681.9873507309967
+        },
+        {
+          "lr": 5e-05,
+          "seed": 43,
+          "best_epoch": 5,
+          "epochs_completed": 5,
+          "training_seconds": 680.3206759809982
+        },
+        {
+          "lr": 5e-05,
+          "seed": 44,
+          "best_epoch": 2,
+          "epochs_completed": 4,
+          "training_seconds": 541.7012643209964
+        }
+      ],
+      "training_time": {
+        "run_count": 5,
+        "epochs_completed": 24,
+        "total_seconds": 3267.4985111249916,
+        "selected_run_seconds": 681.9873507309967
+      }
+    },
+    "modernbert_large": {
+      "validation_macro_f1": 0.5950450212303661,
+      "validation_agreement": 0.7398843930635838,
+      "test_macro_f1": 0.6368981510588425,
+      "test_agreement": 0.757085020242915,
+      "selected": {
+        "lr": 5e-05,
+        "seed": 43,
+        "epoch": 5
+      },
+      "runs": [
+        {
+          "lr": 1e-05,
+          "seed": 42,
+          "best_epoch": 4,
+          "epochs_completed": 5,
+          "training_seconds": 404.01357117800217
+        },
+        {
+          "lr": 2e-05,
+          "seed": 42,
+          "best_epoch": 5,
+          "epochs_completed": 5,
+          "training_seconds": 415.15919454899995
+        },
+        {
+          "lr": 5e-05,
+          "seed": 42,
+          "best_epoch": 5,
+          "epochs_completed": 5,
+          "training_seconds": 405.2451608029951
+        },
+        {
+          "lr": 5e-05,
+          "seed": 43,
+          "best_epoch": 5,
+          "epochs_completed": 5,
+          "training_seconds": 406.1520362279989
+        },
+        {
+          "lr": 5e-05,
+          "seed": 44,
+          "best_epoch": 5,
+          "epochs_completed": 5,
+          "training_seconds": 406.14615523900284
+        }
+      ],
+      "training_time": {
+        "run_count": 5,
+        "epochs_completed": 25,
+        "total_seconds": 2036.716117996999,
+        "selected_run_seconds": 406.1520362279989
+      }
+    }
+  },
+  "matched_seed_validation": [
+    {
+      "baseline_best_epoch": 4,
+      "baseline_validation_macro_f1": 0.6630754256151847,
+      "delta_validation_macro_f1": -0.005571256617840414,
+      "recommended_best_epoch": 5,
+      "recommended_validation_macro_f1": 0.6575041689973443,
+      "seed": 42
+    },
+    {
+      "baseline_best_epoch": 5,
+      "baseline_validation_macro_f1": 0.658857143754722,
+      "delta_validation_macro_f1": -0.015899135926024544,
+      "recommended_best_epoch": 5,
+      "recommended_validation_macro_f1": 0.6429580078286975,
+      "seed": 43
+    },
+    {
+      "baseline_best_epoch": 3,
+      "baseline_validation_macro_f1": 0.62638163335425,
+      "delta_validation_macro_f1": -0.011648643123827185,
+      "recommended_best_epoch": 5,
+      "recommended_validation_macro_f1": 0.6147329902304228,
+      "seed": 44
+    }
+  ],
+  "matched_seed_validation_summary": {
+    "baseline": {
+      "mean": 0.6494380675747189,
+      "sample_sd": 0.020078541896404848
+    },
+    "recommended": {
+      "mean": 0.6383983890188215,
+      "sample_sd": 0.02174709235844001
+    }
+  },
+  "paired_optimizer_test_macro_f1": {
+    "interpretation": "Descriptive paired resampling; does not correct reused holdout, model selection or reference errors",
+    "macro_f1_difference_95pct": [
+      -0.03923629515267957,
+      0.04393402972156846
+    ],
+    "samples": 1000,
+    "seed": 42,
+    "unit": "whole frozen session/fork group"
+  },
+  "paired_380m_minus_150m": {
+    "interpretation": "Descriptive paired resampling; does not correct reused holdout, model selection or reference errors",
+    "macro_f1_difference_95pct": [
+      -0.03425900351304978,
+      0.06606622949244179
+    ],
+    "samples": 1000,
+    "seed": 42,
+    "unit": "whole frozen session/fork group"
+  },
+  "paired_380m_minus_modernbert": {
+    "base": {
+      "interpretation": "Descriptive paired resampling; does not correct reused holdout, model selection or reference errors",
+      "macro_f1_difference_95pct": [
+        0.08122376808592957,
+        0.205146905829294
+      ],
+      "samples": 1000,
+      "seed": 42,
+      "unit": "whole frozen session/fork group"
+    },
+    "large": {
+      "interpretation": "Descriptive paired resampling; does not correct reused holdout, model selection or reference errors",
+      "macro_f1_difference_95pct": [
+        -0.0607700376317023,
+        0.0820485444525677
+      ],
+      "samples": 1000,
+      "seed": 42,
+      "unit": "whole frozen session/fork group"
+    }
+  },
+  "verification": {
+    "historical_ultrabert_optimizer_checks_passed": 44,
+    "baseline_files_unchanged": 158,
+    "new_artifact_hashes_verified": 146
+  },
+  "limits": [
+    "Agreement with model-generated labels is not human accuracy",
+    "Different tokenizer and Transformers versions prevent an architecture-only comparison with ModernBERT",
+    "Three seeds and sparse classes limit inference",
+    "Bootstrap intervals do not correct selection, reused holdouts or reference errors",
+    "Optimizer settings changed together"
+  ],
+  "training_time": {
+    "reviewed_date": "2026-10-16",
+    "source_field": "turn-encoder-model manifest.training_seconds",
+    "unit": "seconds",
+    "timing_method": "Elapsed wall clock from immediately before the first epoch to after the final completed epoch and its checkpoint writes",
+    "includes": [
+      "epoch training",
+      "validation",
+      "progress/history writes",
+      "best-checkpoint writes"
+    ],
+    "excludes": [
+      "downloads and dataset preparation",
+      "initial model loading and optimizer setup",
+      "smoke checks and speed profiles",
+      "final test evaluation and fixed-checkpoint diagnostics",
+      "artifact hashing/sealing and archiving",
+      "idle time between runs"
+    ],
+    "aggregation": "Sum every full candidate run once, including candidates not selected; smoke and profile runs excluded",
+    "selected_run_definition": "Duration of the complete run that supplied the selected checkpoint, including any epochs after its best epoch",
+    "run_count": 23,
+    "total_seconds": 16033.705782060912,
+    "verification": "All 23 saved run manifests and history hashes matched preserved comparison records; no training rerun",
+    "comparability_limit": "ModernBERT Base used SDPA and gradient checkpointing; Large and UltraBERT used FlashAttention 2 with differing physical batch limits",
+    "luna": "No task-specific training; prompted inference only, excluded from training totals"
+  }
+}
