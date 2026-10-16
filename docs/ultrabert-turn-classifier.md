@@ -22,6 +22,25 @@ The initial runs preserve the ModernBERT optimization recipe: effective batch 16
 
 UltraBERT-150M selected LR 2e-5 / seed 44 / epoch 4. The original 380M selected LR 1e-5 / seed 42 / epoch 4. Descriptive paired group-bootstrap test F1 intervals for original 380M minus 150M and ModernBERT Large are [-0.0343, +0.0661] and [-0.0608, +0.0820]; neither establishes an advantage. Different tokenizers, Transformers versions and execution profiles prevent an architecture-only comparison.
 
+## Recorded training time
+
+**Reviewed 16 October 2026 from preserved run manifests and histories; no retraining.** The 23 full candidate runs total **267.23 minutes (4 h 27 min 14 s)**. All use 1,011 training and 173 validation turns. The [aggregate measurements](measurements/2026-10-15-ultrabert.json) retain each run's `training_seconds`, the selected run and summed durations.
+
+| Model / optimizer | Full runs | Completed epochs | Selected run, minutes | All runs, minutes |
+| --- | ---: | ---: | ---: | ---: |
+| ModernBERT Base | 5 | 24 | 11.37 | 54.46 |
+| ModernBERT Large | 5 | 25 | 6.77 | 33.95 |
+| UltraBERT-150M | 5 | 24 | 12.05 | 58.47 |
+| UltraBERT-380M, original | 5 | 25 | 15.20 | 75.09 |
+| UltraBERT-380M, recommended | 3 | 15 | 15.09 | 45.27 |
+| Total | 23 | 113 | — | 267.23 |
+
+Each saved model manifest's `training_seconds` measures elapsed wall time from immediately before the first epoch through the last completed epoch, including validation, progress/history writes and best-checkpoint writes. Sum the unrounded seconds once per full run, then divide by 60; for example, the original 380M's five runs total 4,505.2212 seconds / 60 = 75.0870 minutes. Displayed rows are rounded independently. Smoke checks, speed profiles, downloads, data preparation, initial loading/optimizer setup, final test evaluation, fixed-checkpoint diagnostics, artifact hashing/sealing, archiving and idle time are excluded. The total is accumulated run time, not end-to-end project elapsed time or measured GPU-kernel time.
+
+Selected-run duration covers that candidate's entire training run, including epochs after the retained best epoch. For example, original 380M selected epoch 4 but completed five epochs; 15.20 minutes covers all five. Base and 150M each have one four-epoch early stop; the other runs completed five epochs.
+
+ModernBERT Base used SDPA, gradient checkpointing and microbatch 2; Large and UltraBERT used FlashAttention 2 without gradient checkpointing and had different physical batch limits. These timings compare the recorded configurations, not model architecture alone; see [ModernBERT compute trade-offs](turn-classifier-comparison.md#compute-trade-offs-and-class-coverage) and the [UltraBERT runtime](#portable-workflow). Luna low/max runs used prompted inference without task-specific training, so their inference durations are outside this training total.
+
 ## Original 380M runs
 
 All five completed five epochs. Best epoch identifies the retained checkpoint, not the final training epoch.

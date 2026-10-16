@@ -657,6 +657,8 @@ The separately versioned [ModernBERT Spark workflow](turn-classifier-run.md) ext
 
 The [UltraBERT workflow and results](ultrabert-turn-classifier.md) own commands, exact settings, source revisions and measurement limits. This is an explicit extension to CLS-04's local model-loading policy: UltraBERT may execute checksum-verified downloaded local implementation code for its two allowlisted revisions; downloads remain a separate command and inference/training load local files only. ModernBERT and the older BERT/LightGBM paths retain their current defaults. Keep complete private evidence separate from public aggregate reports and synthetic tests. Reusable source is generalized from preserved execution snapshots; publishing it does not claim a fresh training run or reliable optimizer improvement.
 
+**Training-duration reporting, requested and recorded 2026-10-16.** Document each ModernBERT/UltraBERT configuration's completed run count, selected-run duration and total duration across all full candidates. Preserve per-run seconds and define the timer, aggregation, exclusions and execution-setting differences. The [training-time record](ultrabert-turn-classifier.md#recorded-training-time) derives these measurements from existing manifests and histories; prompted Luna inference has no task-specific training duration here.
+
 ## 17. Dataset curation
 
 **Implemented 2026-09-26.** Review turn-level classifier disagreements and suggest duplicates from target user input only. The [curation design](dataset-curation.md) defines transformations, persistence and interfaces for `dataset-curation-v2`. Offline and browser checks cover both provider paths; live remote embedding interoperability remains unverified because the required private endpoint was unavailable.

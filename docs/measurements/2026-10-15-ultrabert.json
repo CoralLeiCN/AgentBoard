@@ -1,6 +1,6 @@
 {
   "measured_date": "2026-10-15",
-  "scope": "Aggregate reference agreement; no session contents, identities, private manifests or model weights",
+  "scope": "Aggregate reference agreement and recorded training durations; no session contents, identities, private manifests or model weights",
   "cohort": {
     "train": 1011,
     "validation": 173,
@@ -104,7 +104,13 @@
           "epochs_completed": 5,
           "validation_agreement": 0.7167630057803468
         }
-      ]
+      ],
+      "training_time": {
+        "run_count": 5,
+        "epochs_completed": 24,
+        "total_seconds": 3508.193999535637,
+        "selected_run_seconds": 723.0168699019123
+      }
     },
     "ultrabert_380m": {
       "selected": {
@@ -167,7 +173,13 @@
           "epochs_completed": 5,
           "validation_agreement": 0.7745664739884393
         }
-      ]
+      ],
+      "training_time": {
+        "run_count": 5,
+        "epochs_completed": 25,
+        "total_seconds": 4505.22122596507,
+        "selected_run_seconds": 912.0550513779745
+      }
     },
     "ultrabert_380m_recommended": {
       "selected": {
@@ -210,19 +222,121 @@
           "epochs_completed": 5,
           "validation_agreement": 0.7745664739884393
         }
-      ]
+      ],
+      "training_time": {
+        "run_count": 3,
+        "epochs_completed": 15,
+        "total_seconds": 2716.0759274382144,
+        "selected_run_seconds": 905.6168217330705
+      }
     },
     "modernbert_base": {
       "validation_macro_f1": 0.5471879563330212,
       "validation_agreement": 0.6820809248554913,
       "test_macro_f1": 0.49782946775548165,
-      "test_agreement": 0.6153846153846154
+      "test_agreement": 0.6153846153846154,
+      "selected": {
+        "lr": 5e-05,
+        "seed": 42,
+        "epoch": 5
+      },
+      "runs": [
+        {
+          "lr": 1e-05,
+          "seed": 42,
+          "best_epoch": 4,
+          "epochs_completed": 5,
+          "training_seconds": 681.1326743099999
+        },
+        {
+          "lr": 2e-05,
+          "seed": 42,
+          "best_epoch": 4,
+          "epochs_completed": 5,
+          "training_seconds": 682.3565457820005
+        },
+        {
+          "lr": 5e-05,
+          "seed": 42,
+          "best_epoch": 5,
+          "epochs_completed": 5,
+          "training_seconds": 681.9873507309967
+        },
+        {
+          "lr": 5e-05,
+          "seed": 43,
+          "best_epoch": 5,
+          "epochs_completed": 5,
+          "training_seconds": 680.3206759809982
+        },
+        {
+          "lr": 5e-05,
+          "seed": 44,
+          "best_epoch": 2,
+          "epochs_completed": 4,
+          "training_seconds": 541.7012643209964
+        }
+      ],
+      "training_time": {
+        "run_count": 5,
+        "epochs_completed": 24,
+        "total_seconds": 3267.4985111249916,
+        "selected_run_seconds": 681.9873507309967
+      }
     },
     "modernbert_large": {
       "validation_macro_f1": 0.5950450212303661,
       "validation_agreement": 0.7398843930635838,
       "test_macro_f1": 0.6368981510588425,
-      "test_agreement": 0.757085020242915
+      "test_agreement": 0.757085020242915,
+      "selected": {
+        "lr": 5e-05,
+        "seed": 43,
+        "epoch": 5
+      },
+      "runs": [
+        {
+          "lr": 1e-05,
+          "seed": 42,
+          "best_epoch": 4,
+          "epochs_completed": 5,
+          "training_seconds": 404.01357117800217
+        },
+        {
+          "lr": 2e-05,
+          "seed": 42,
+          "best_epoch": 5,
+          "epochs_completed": 5,
+          "training_seconds": 415.15919454899995
+        },
+        {
+          "lr": 5e-05,
+          "seed": 42,
+          "best_epoch": 5,
+          "epochs_completed": 5,
+          "training_seconds": 405.2451608029951
+        },
+        {
+          "lr": 5e-05,
+          "seed": 43,
+          "best_epoch": 5,
+          "epochs_completed": 5,
+          "training_seconds": 406.1520362279989
+        },
+        {
+          "lr": 5e-05,
+          "seed": 44,
+          "best_epoch": 5,
+          "epochs_completed": 5,
+          "training_seconds": 406.14615523900284
+        }
+      ],
+      "training_time": {
+        "run_count": 5,
+        "epochs_completed": 25,
+        "total_seconds": 2036.716117996999,
+        "selected_run_seconds": 406.1520362279989
+      }
     }
   },
   "matched_seed_validation": [
@@ -314,5 +428,32 @@
     "Three seeds and sparse classes limit inference",
     "Bootstrap intervals do not correct selection, reused holdouts or reference errors",
     "Optimizer settings changed together"
-  ]
+  ],
+  "training_time": {
+    "reviewed_date": "2026-10-16",
+    "source_field": "turn-encoder-model manifest.training_seconds",
+    "unit": "seconds",
+    "timing_method": "Elapsed wall clock from immediately before the first epoch to after the final completed epoch and its checkpoint writes",
+    "includes": [
+      "epoch training",
+      "validation",
+      "progress/history writes",
+      "best-checkpoint writes"
+    ],
+    "excludes": [
+      "downloads and dataset preparation",
+      "initial model loading and optimizer setup",
+      "smoke checks and speed profiles",
+      "final test evaluation and fixed-checkpoint diagnostics",
+      "artifact hashing/sealing and archiving",
+      "idle time between runs"
+    ],
+    "aggregation": "Sum every full candidate run once, including candidates not selected; smoke and profile runs excluded",
+    "selected_run_definition": "Duration of the complete run that supplied the selected checkpoint, including any epochs after its best epoch",
+    "run_count": 23,
+    "total_seconds": 16033.705782060912,
+    "verification": "All 23 saved run manifests and history hashes matched preserved comparison records; no training rerun",
+    "comparability_limit": "ModernBERT Base used SDPA and gradient checkpointing; Large and UltraBERT used FlashAttention 2 with differing physical batch limits",
+    "luna": "No task-specific training; prompted inference only, excluded from training totals"
+  }
 }
